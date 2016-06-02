@@ -1,7 +1,4 @@
 
-#include <boost/lambda/bind.hpp>
-#include <boost/lambda/lambda.hpp>
-
 //configuration
 #define ST_ASIO_SERVER_PORT		9528
 #define ST_ASIO_REUSE_OBJECT //use objects pool
@@ -121,7 +118,9 @@ public:
 	boost::posix_time::time_duration recv_idle_time()
 	{
 		boost::posix_time::time_duration time_recv_idle;
-		do_something_to_all(time_recv_idle += boost::lambda::bind(&echo_socket::recv_idle_time, &*boost::lambda::_1));
+		boost::shared_lock<boost::shared_mutex> lock(ST_THIS object_can_mutex);
+		for (BOOST_AUTO(iter, ST_THIS object_can.begin()); iter != ST_THIS object_can.end(); ++iter)
+			time_recv_idle += (*iter)->recv_idle_time();
 
 		return time_recv_idle;
 	}

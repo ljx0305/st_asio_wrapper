@@ -52,6 +52,8 @@ protected:
 		sending = suspend_send_msg_ = false;
 		dispatching = suspend_dispatch_msg_ = false;
 		started_ = false;
+
+		time_recv_idle = boost::posix_time::time_duration();
 	}
 
 	void clear_buffer()
@@ -110,6 +112,8 @@ public:
 		do_dispatch_msg(true);
 	}
 	bool suspend_dispatch_msg() const {return suspend_dispatch_msg_;}
+
+	boost::posix_time::time_duration recv_idle_time() const {return time_recv_idle;}
 
 	//get or change the packer at runtime
 	//changing packer at runtime is not thread-safe, please pay special attention
@@ -329,6 +333,7 @@ private:
 		switch (id)
 		{
 		case TIMER_DISPATCH_MSG: //delay putting msgs into receive buffer cause of receive buffer overflow
+			time_recv_idle += boost::posix_time::milliseconds(50);
 			dispatch_msg();
 			break;
 		case TIMER_SUSPEND_DISPATCH_MSG: //suspend dispatching msgs
@@ -407,6 +412,9 @@ protected:
 #ifdef ST_ASIO_ENHANCED_STABILITY
 	boost::shared_ptr<char> async_call_indicator;
 #endif
+
+	//during this duration, st_socket suspended msg reception because of receiving buffer was full.
+	boost::posix_time::time_duration time_recv_idle;
 };
 
 } //namespace

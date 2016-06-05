@@ -178,11 +178,11 @@ protected:
 	}
 
 private:
-	void recv_handler(
 #ifdef ST_ASIO_ENHANCED_STABILITY
-		boost::shared_ptr<char> async_call_indicator,
+	void recv_handler(boost::shared_ptr<char> async_call_indicator, const boost::system::error_code& ec, size_t bytes_transferred)
+#else
+	void recv_handler(const boost::system::error_code& ec, size_t bytes_transferred)
 #endif
-		const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		if (!ec && bytes_transferred > 0)
 		{
@@ -200,11 +200,11 @@ private:
 			ST_THIS on_recv_error(ec);
 	}
 
-	void send_handler(
 #ifdef ST_ASIO_ENHANCED_STABILITY
-		boost::shared_ptr<char> async_call_indicator,
+	void send_handler(boost::shared_ptr<char> async_call_indicator, const boost::system::error_code& ec, size_t bytes_transferred)
+#else
+	void send_handler(const boost::system::error_code& ec, size_t bytes_transferred)
 #endif
-		const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		if (!ec)
 		{

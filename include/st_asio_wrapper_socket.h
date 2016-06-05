@@ -81,7 +81,7 @@ public:
 			return false;
 
 #ifdef ST_ASIO_ENHANCED_STABILITY
-		if (!async_call_indicator.unique())
+		if (ST_THIS is_async_calling())
 			return false;
 #endif
 
@@ -269,7 +269,12 @@ protected:
 				{
 					dispatching = true;
 					last_dispatch_msg.swap(recv_msg_buffer.front());
+#ifdef ST_ASIO_ENHANCED_STABILITY
+					auto unused(ST_THIS async_call_indicator);
+					io_service_.post([this, unused]() {ST_THIS msg_handler();});
+#else
 					io_service_.post([this]() {ST_THIS msg_handler();});
+#endif
 					recv_msg_buffer.pop_front();
 				}
 			}
@@ -277,7 +282,7 @@ protected:
 			if (dispatch_all)
 			{
 #ifdef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
-				//the msgs in temp_msg_buffer are discarded if we don't used msg receive buffer, it's very hard to resolve this defect,
+				//the msgs in temp_msg_buffer will be discarded if we don't used msg receive buffer, it's very hard to resolve this defect,
 				//so, please be very carefully if you decide to resolve this issue, the biggest problem is calling force_close in on_msg.
 				recv_msg_buffer.splice(std::end(recv_msg_buffer), temp_msg_buffer);
 #endif
@@ -322,9 +327,7 @@ protected:
 	void init()
 	{
 		reset_state();
-#ifdef ST_ASIO_ENHANCED_STABILITY
-		async_call_indicator = boost::make_shared<char>('\0');
-#endif
+		st_timer::init();
 	}
 
 private:
@@ -408,10 +411,6 @@ protected:
 
 	bool started_; //has started or not
 	boost::shared_mutex start_mutex;
-
-#ifdef ST_ASIO_ENHANCED_STABILITY
-	boost::shared_ptr<char> async_call_indicator;
-#endif
 
 	//during this duration, st_socket suspended msg reception because of receiving buffer was full.
 	boost::posix_time::time_duration time_recv_idle;

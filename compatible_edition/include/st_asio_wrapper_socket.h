@@ -42,7 +42,6 @@ protected:
 	static const unsigned char TIMER_END = TIMER_BEGIN + 10;
 
 	st_socket(boost::asio::io_service& io_service_) : st_timer(io_service_), _id(-1), next_layer_(io_service_), packer_(boost::make_shared<Packer>()) {init();}
-
 	template<typename Arg>
 	st_socket(boost::asio::io_service& io_service_, Arg& arg) : st_timer(io_service_), _id(-1), next_layer_(io_service_, arg), packer_(boost::make_shared<Packer>()) {init();}
 
@@ -77,13 +76,8 @@ public:
 
 	virtual bool obsoleted()
 	{
-		if (started())
+		if (started() || ST_THIS is_async_calling())
 			return false;
-
-#ifdef ST_ASIO_ENHANCED_STABILITY
-		if (ST_THIS is_async_calling())
-			return false;
-#endif
 
 		boost::unique_lock<boost::shared_mutex> lock(recv_msg_buffer_mutex, boost::try_to_lock);
 		return lock.owns_lock() && recv_msg_buffer.empty(); //if successfully locked, means this st_socket is idle
@@ -171,6 +165,7 @@ public:
 protected:
 	virtual bool do_start() = 0;
 	virtual bool do_send_msg() = 0; //must mutex send_msg_buffer before invoke this function
+	virtual void do_recv_msg() = 0;
 
 	virtual bool is_send_allowed() const {return !suspend_send_msg_;} //can send msg or not(just put into send buffer)
 
@@ -241,7 +236,7 @@ protected:
 #endif
 
 		if (temp_msg_buffer.empty())
-			do_start(); //receive msg sequentially, which means second receiving only after first receiving success
+			do_recv_msg(); //receive msg sequentially, which means second receiving only after first receiving success
 		else
 			set_timer(TIMER_DISPATCH_MSG, 50, boost::bind(&st_socket::timer_handler, this, _1));
 	}
@@ -259,9 +254,8 @@ protected:
 		}
 		else if (!posting)
 		{
-			BOOST_AUTO(&io_service_, get_io_service());
 			bool dispatch_all = false;
-			if (io_service_.stopped())
+			if (get_io_service().stopped())
 				dispatch_all = !(dispatching = false);
 			else if (!dispatching)
 			{
@@ -271,22 +265,13 @@ protected:
 				{
 					dispatching = true;
 					last_dispatch_msg.swap(recv_msg_buffer.front());
-#ifdef ST_ASIO_ENHANCED_STABILITY
-					io_service_.post(boost::bind(&st_socket::msg_handler, this, ST_THIS async_call_indicator));
-#else
-					io_service_.post(boost::bind(&st_socket::msg_handler, this));
-#endif
+					post(boost::bind(&st_socket::msg_handler, this));
 					recv_msg_buffer.pop_front();
 				}
 			}
 
 			if (dispatch_all)
 			{
-#ifdef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
-				//the msgs in temp_msg_buffer will be discarded if we don't used msg receive buffer, it's very hard to resolve this defect,
-				//so, please be very carefully if you decide to resolve this issue, the biggest problem is calling force_close in on_msg.
-				recv_msg_buffer.splice(recv_msg_buffer.end(), temp_msg_buffer);
-#endif
 #ifndef ST_ASIO_DISCARD_MSG_WHEN_LINK_DOWN
 				st_asio_wrapper::do_something_to_all(recv_msg_buffer, boost::bind(&st_socket::on_msg_handle, this, _1, true));
 #endif
@@ -363,6 +348,7 @@ private:
 			}
 			break;
 		case TIMER_RE_DISPATCH_MSG: //re-dispatch
+			time_recv_idle += boost::posix_time::milliseconds(50);
 			do_dispatch_msg(true);
 			break;
 		default:
@@ -373,11 +359,7 @@ private:
 		return false;
 	}
 
-#ifdef ST_ASIO_ENHANCED_STABILITY
-	void msg_handler(boost::shared_ptr<char> async_call_indicator)
-#else
 	void msg_handler()
-#endif
 	{
 		bool re = on_msg_handle(last_dispatch_msg, false); //must before next msg dispatching to keep sequence
 		boost::unique_lock<boost::shared_mutex> lock(recv_msg_buffer_mutex);

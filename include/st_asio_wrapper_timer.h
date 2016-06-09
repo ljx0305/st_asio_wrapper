@@ -56,8 +56,14 @@ public:
 	typedef const object_type object_ctype;
 	typedef boost::container::set<object_type> container_type;
 
+	template <typename CompletionHandler>
+	BOOST_ASIO_INITFN_RESULT_TYPE(CompletionHandler, void ())
 #ifdef ST_ASIO_ENHANCED_STABILITY
+	post(BOOST_ASIO_MOVE_ARG(CompletionHandler) handler) {auto unused(ST_THIS async_call_indicator); io_service_.post([=]() {handler();});}
 	bool is_async_calling() const {return !async_call_indicator.unique();}
+#else
+	post(BOOST_ASIO_MOVE_ARG(CompletionHandler) handler) {io_service_.post(handler);}
+	bool is_async_calling() const {return false;}
 #endif
 
 	void update_timer_info(unsigned char id, size_t milliseconds, boost::function<bool(unsigned char)>&& call_back, bool start = false)
@@ -137,11 +143,7 @@ public:
 	DO_SOMETHING_TO_ALL_MUTEX(timer_can, timer_can_mutex)
 	DO_SOMETHING_TO_ONE_MUTEX(timer_can, timer_can_mutex)
 
-#ifdef ST_ASIO_ENHANCED_STABILITY
-	void stop_all_timer() {auto unused(async_call_indicator); do_something_to_all([this, unused](object_type& item) {ST_THIS stop_timer(item);});}
-#else
 	void stop_all_timer() {do_something_to_all([this](object_type& item) {ST_THIS stop_timer(item);});}
-#endif
 
 protected:
 #ifdef ST_ASIO_ENHANCED_STABILITY

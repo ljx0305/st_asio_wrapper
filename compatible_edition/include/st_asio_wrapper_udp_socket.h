@@ -121,13 +121,7 @@ protected:
 	{
 		if (!ST_THIS get_io_service().stopped())
 		{
-			ST_THIS next_layer().async_receive_from(unpacker_->prepare_next_recv(), peer_addr,
-				boost::bind(&st_udp_socket_base::recv_handler, this,
-#ifdef ST_ASIO_ENHANCED_STABILITY
-					ST_THIS async_call_indicator,
-#endif
-					boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
-
+			do_recv_msg();
 			return true;
 		}
 
@@ -153,6 +147,16 @@ protected:
 		}
 
 		return ST_THIS sending;
+	}
+
+	virtual void do_recv_msg()
+	{
+		ST_THIS next_layer().async_receive_from(unpacker_->prepare_next_recv(), peer_addr,
+			boost::bind(&st_udp_socket_base::recv_handler, this,
+#ifdef ST_ASIO_ENHANCED_STABILITY
+				ST_THIS async_call_indicator,
+#endif
+				boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
 	}
 
 	virtual bool is_send_allowed() const {return ST_THIS lowest_layer().is_open() && st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::is_send_allowed();}
@@ -184,11 +188,11 @@ protected:
 	}
 
 private:
+	void recv_handler(
 #ifdef ST_ASIO_ENHANCED_STABILITY
-	void recv_handler(boost::shared_ptr<char> async_call_indicator, const boost::system::error_code& ec, size_t bytes_transferred)
-#else
-	void recv_handler(const boost::system::error_code& ec, size_t bytes_transferred)
+		const boost::shared_ptr<char>& async_call_indicator,
 #endif
+		const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		if (!ec && bytes_transferred > 0)
 		{
@@ -204,11 +208,11 @@ private:
 			on_recv_error(ec);
 	}
 
+	void send_handler(
 #ifdef ST_ASIO_ENHANCED_STABILITY
-	void send_handler(boost::shared_ptr<char> async_call_indicator, const boost::system::error_code& ec, size_t bytes_transferred)
-#else
-	void send_handler(const boost::system::error_code& ec, size_t bytes_transferred)
+		const boost::shared_ptr<char>& async_call_indicator,
 #endif
+		const boost::system::error_code& ec, size_t bytes_transferred)
 	{
 		if (!ec)
 		{

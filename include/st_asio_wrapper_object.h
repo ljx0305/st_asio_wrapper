@@ -13,8 +13,6 @@
 #ifndef ST_ASIO_WRAPPER_OBJECT_H_
 #define ST_ASIO_WRAPPER_OBJECT_H_
 
-#include <boost/function.hpp>
-
 #include "st_asio_wrapper_base.h"
 
 namespace st_asio_wrapper

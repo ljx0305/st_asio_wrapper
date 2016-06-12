@@ -15,8 +15,8 @@
 
 #include <boost/container/set.hpp>
 
-#include "st_asio_wrapper_object.h"
 #include "st_asio_wrapper_base.h"
+#include "st_asio_wrapper_object.h"
 
 //If you inherit a class from class X, your own timer ids must begin from X::TIMER_END
 namespace st_asio_wrapper

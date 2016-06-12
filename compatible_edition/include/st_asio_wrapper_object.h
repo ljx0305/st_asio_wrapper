@@ -52,7 +52,7 @@ protected:
 	boost::shared_ptr<char> async_call_indicator;
 #else
 	template<typename CompletionHandler>
-	BOOST_ASIO_INITFN_RESULT_TYPE(CompletionHandler, void ())
+	BOOST_ASIO_INITFN_RESULT_TYPE(CompletionHandler, void())
 	post(BOOST_ASIO_MOVE_ARG(CompletionHandler) handler) {io_service_.post(handler);}
 	bool is_async_calling() const {return false;}
 

@@ -15,7 +15,6 @@
 
 #include <boost/container/set.hpp>
 
-#include "st_asio_wrapper_base.h"
 #include "st_asio_wrapper_object.h"
 
 //If you inherit a class from class X, your own timer ids must begin from X::TIMER_END
@@ -141,7 +140,7 @@ protected:
 	void start_timer(object_ctype& ti)
 	{
 		ti.timer->expires_from_now(boost::posix_time::milliseconds(ti.milliseconds));
-		ti.timer->async_wait(ST_THIS make_handler_error(boost::bind(&st_timer::timer_handler, this, boost::asio::placeholders::error, boost::ref(ti))));
+		ti.timer->async_wait(make_handler_error(boost::bind(&st_timer::timer_handler, this, boost::asio::placeholders::error, boost::ref(ti))));
 	}
 
 	void stop_timer(object_type& ti)

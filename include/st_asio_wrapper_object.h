@@ -29,7 +29,7 @@ public:
 	const boost::asio::io_service& get_io_service() const {return io_service_;}
 
 	template<typename CompletionHandler>
-	BOOST_ASIO_INITFN_RESULT_TYPE(CompletionHandler, void ())
+	BOOST_ASIO_INITFN_RESULT_TYPE(CompletionHandler, void())
 #ifdef ST_ASIO_ENHANCED_STABILITY
 	post(BOOST_ASIO_MOVE_ARG(CompletionHandler) handler) {auto unused(ST_THIS async_call_indicator); io_service_.post([=]() {handler();});}
 	bool is_async_calling() const {return !async_call_indicator.unique();}

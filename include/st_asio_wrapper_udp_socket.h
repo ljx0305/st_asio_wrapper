@@ -65,6 +65,7 @@ public:
 		if (ec)
 			unified_out::error_out("bind failed.");
 
+		unpacker_->reset_state();
 		st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::reset();
 	}
 

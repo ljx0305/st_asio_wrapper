@@ -172,8 +172,7 @@ int main(int argc, const char* argv[])
 			printf("normal server, link #: " ST_ASIO_SF ", closed links: " ST_ASIO_SF "\n", server_.size(), server_.closed_object_size());
 			printf("echo server, link #: " ST_ASIO_SF ", closed links: " ST_ASIO_SF "\n", echo_server_.size(), echo_server_.closed_object_size());
 			boost::posix_time::time_duration time_recv_idle = echo_server_.recv_idle_time();
-			printf("recv idle time: %d:%d:%d %f\n", time_recv_idle.hours(), time_recv_idle.minutes(), time_recv_idle.seconds(),
-				time_recv_idle.fractional_seconds() / pow(10., boost::posix_time::time_duration::num_fractional_digits()));
+			printf("total recv idle time(echo server): %d.%lld second(s)\n", time_recv_idle.total_seconds(), time_recv_idle.fractional_seconds());
 		}
 		//the following two commands demonstrate how to suspend msg dispatching, no matter recv buffer been used or not
 		else if (str == SUSPEND_COMMAND)

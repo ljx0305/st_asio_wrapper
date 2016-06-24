@@ -82,7 +82,7 @@ public:
 	///////////////////////////////////////////////////
 
 protected:
-	void force_close() {if (1 != close_state) clean_up();}
+	void force_close() {if (1 != close_state) do_close();}
 	bool graceful_close(bool sync = true) //will block until closing success or time out if sync equal to true
 	{
 		if (is_closing())
@@ -94,7 +94,7 @@ protected:
 		ST_THIS lowest_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
 		if (ec) //graceful closing is impossible
 		{
-			clean_up();
+			do_close();
 			return false;
 		}
 
@@ -106,7 +106,7 @@ protected:
 			if (loop_num < 0) //graceful closing is impossible
 			{
 				unified_out::info_out("failed to graceful close within %d seconds", ST_ASIO_GRACEFUL_CLOSE_MAX_DURATION);
-				clean_up();
+				do_close();
 			}
 		}
 
@@ -152,11 +152,12 @@ protected:
 
 	virtual bool on_msg_handle(out_msg_type& msg, bool link_down) {unified_out::debug_out("recv(" ST_ASIO_SF "): %s", msg.size(), msg.data()); return true;}
 
-	void clean_up()
+	void do_close()
 	{
 		close_state = 1;
 		ST_THIS stop_all_timer();
-		reset_state();
+		ST_THIS started_ = false;
+//		reset_state();
 
 		if (ST_THIS lowest_layer().is_open())
 		{

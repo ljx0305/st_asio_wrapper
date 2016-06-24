@@ -131,6 +131,7 @@ private:
 		else
 		{
 			authorized_ = true;
+			ST_THIS reset_state();
 			ST_THIS send_msg(); //send buffer may have msgs, send them
 			do_start();
 		}

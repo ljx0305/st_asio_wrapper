@@ -244,7 +244,7 @@ int main(int argc, const char* argv[])
 		{
 			printf("link #: " ST_ASIO_SF ", valid links: " ST_ASIO_SF ", closed links: " ST_ASIO_SF "\n", client.size(), client.valid_size(), client.closed_object_size());
 			boost::posix_time::time_duration time_recv_idle = client.recv_idle_time();
-			printf("total recv idle time: %d.%lld second(s)\n", time_recv_idle.total_seconds(), time_recv_idle.fractional_seconds());
+			printf("total recv idle time: %d." ST_ASIO_SF " second(s)\n", time_recv_idle.total_seconds(), time_recv_idle.fractional_seconds());
 		}
 		//the following two commands demonstrate how to suspend msg dispatching, no matter recv buffer been used or not
 		else if (str == SUSPEND_COMMAND)

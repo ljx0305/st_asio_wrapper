@@ -129,18 +129,10 @@ public:
 	virtual void test() {/*puts("in echo_server::test()");*/}
 };
 
-#ifdef _MSC_VER
-        #ifdef _WIN64
-        #define fractional_seconds_format       "%ld"
-        #else //_WIN32
-        #define fractional_seconds_format       "%lld"
-        #endif
-#else // defined __GNUC__
-        #ifdef __x86_64__
-        #define fractional_seconds_format       "%ld"
-        #else //__i386__
-        #define fractional_seconds_format       "%lld"
-        #endif
+#if defined(_MSC_VER) || defined(__i386__)
+#define fractional_seconds_format "%lld"
+#else // defined(__GNUC__) && defined(__x86_64__)
+#define fractional_seconds_format "%ld"
 #endif
 
 int main(int argc, const char* argv[])

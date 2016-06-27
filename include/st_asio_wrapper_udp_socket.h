@@ -136,9 +136,11 @@ protected:
 		{
 			ST_THIS sending = true;
 			ST_THIS last_send_msg.swap(ST_THIS send_msg_buffer.front());
+			ST_THIS send_msg_buffer.pop_front();
+
+			boost::shared_lock<boost::shared_mutex> lock(ST_THIS close_mutex);
 			ST_THIS next_layer().async_send_to(boost::asio::buffer(ST_THIS last_send_msg.data(), ST_THIS last_send_msg.size()), ST_THIS last_send_msg.peer_addr,
 				ST_THIS make_handler_error_size(boost::bind(&st_udp_socket_base::send_handler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
-			ST_THIS send_msg_buffer.pop_front();
 		}
 
 		return ST_THIS sending;
@@ -146,7 +148,11 @@ protected:
 
 	virtual void do_recv_msg()
 	{
-		ST_THIS next_layer().async_receive_from(unpacker_->prepare_next_recv(), peer_addr,
+		auto recv_buff = unpacker_->prepare_next_recv();
+		assert(boost::asio::buffer_size(recv_buff) > 0);
+
+		boost::shared_lock<boost::shared_mutex> lock(ST_THIS close_mutex);
+		ST_THIS next_layer().async_receive_from(recv_buff, peer_addr,
 			ST_THIS make_handler_error_size(boost::bind(&st_udp_socket_base::recv_handler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
 	}
 
@@ -175,6 +181,8 @@ protected:
 		{
 			boost::system::error_code ec;
 			ST_THIS lowest_layer().shutdown(boost::asio::ip::udp::socket::shutdown_both, ec);
+
+			boost::unique_lock<boost::shared_mutex> lock(ST_THIS close_mutex);
 			ST_THIS lowest_layer().close(ec);
 		}
 	}

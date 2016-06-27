@@ -376,6 +376,7 @@ private:
 protected:
 	boost::uint_fast64_t _id;
 	Socket next_layer_;
+	boost::shared_mutex close_mutex;
 
 	InMsgType last_send_msg;
 	OutMsgType last_dispatch_msg;
@@ -383,7 +384,7 @@ protected:
 
 	in_container_type post_msg_buffer, send_msg_buffer;
 	out_container_type recv_msg_buffer, temp_msg_buffer;
-	//st_socket will invoke dispatch_msg() when got some msgs. if these msgs can't push into recv_msg_buffer cause of receive buffer overflow,
+	//st_socket will invoke dispatch_msg() when got some msgs. if these msgs can't push into recv_msg_buffer because of receive buffer overflow,
 	//st_socket will delay 50 milliseconds(non-blocking) to invoke dispatch_msg() again, and now, as you known, temp_msg_buffer is used to hold these msgs temporarily.
 	boost::shared_mutex post_msg_buffer_mutex, send_msg_buffer_mutex;
 	boost::shared_mutex recv_msg_buffer_mutex;

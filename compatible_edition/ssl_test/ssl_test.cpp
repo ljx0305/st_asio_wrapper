@@ -85,7 +85,7 @@ int main(int argc, const char* argv[])
 			service_pump.start_service();
 		}
 		else if (RECONNECT_COMMAND == str)
-//			ssl_client.graceful_close(true);
+			ssl_client.graceful_close(true);
 		*/
 		else
 			server_.broadcast_msg(str);

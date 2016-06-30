@@ -241,7 +241,7 @@ private:
 protected:
 	boost::shared_ptr<i_udp_unpacker<typename Packer::msg_type> > unpacker_;
 	boost::asio::ip::udp::endpoint peer_addr, local_addr;
-	
+
 	boost::shared_mutex close_mutex;
 };
 typedef st_udp_socket_base<> st_udp_socket;

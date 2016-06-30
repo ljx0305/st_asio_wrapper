@@ -186,7 +186,7 @@ protected:
 		{
 			boost::system::error_code ec;
 			ST_THIS lowest_layer().shutdown(boost::asio::ip::udp::socket::shutdown_both, ec);
-			
+
 			boost::unique_lock<boost::shared_mutex> lock(close_mutex);
 			ST_THIS lowest_layer().close(ec);
 		}

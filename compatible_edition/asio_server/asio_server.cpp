@@ -170,14 +170,14 @@ int main(int argc, const char* argv[])
 	{
 		std::string str;
 		std::cin >> str;
-		if (str == QUIT_COMMAND)
+		if (QUIT_COMMAND == str)
 			service_pump.stop_service();
-		else if (str == RESTART_COMMAND)
+		else if (RESTART_COMMAND == str)
 		{
 			service_pump.stop_service();
 			service_pump.start_service(1);
 		}
-		else if (str == LIST_STATUS)
+		else if (LIST_STATUS == str)
 		{
 			printf("normal server, link #: " ST_ASIO_SF ", closed links: " ST_ASIO_SF "\n", server_.size(), server_.closed_object_size());
 			printf("echo server, link #: " ST_ASIO_SF ", closed links: " ST_ASIO_SF "\n", echo_server_.size(), echo_server_.closed_object_size());
@@ -185,11 +185,11 @@ int main(int argc, const char* argv[])
 			printf("total recv idle time(echo server): %d." fractional_seconds_format " second(s)\n", time_recv_idle.total_seconds(), time_recv_idle.fractional_seconds());
 		}
 		//the following two commands demonstrate how to suspend msg dispatching, no matter recv buffer been used or not
-		else if (str == SUSPEND_COMMAND)
+		else if (SUSPEND_COMMAND == str)
 			echo_server_.do_something_to_all(boost::bind(&echo_socket::suspend_dispatch_msg, _1, true));
-		else if (str == RESUME_COMMAND)
+		else if (RESUME_COMMAND == str)
 			echo_server_.do_something_to_all(boost::bind(&echo_socket::suspend_dispatch_msg, _1, false));
-		else if (str == LIST_ALL_CLIENT)
+		else if (LIST_ALL_CLIENT == str)
 		{
 			puts("clients from normal server:");
 			server_.list_all_object();

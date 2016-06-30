@@ -101,7 +101,6 @@ protected:
 			authorized_ = false;
 
 			boost::system::error_code ec;
-			boost::unique_lock<boost::shared_mutex> lock(ST_THIS close_mutex);
 			ST_THIS next_layer().shutdown(ec);
 
 			re = !ec;

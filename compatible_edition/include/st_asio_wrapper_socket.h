@@ -45,9 +45,22 @@ protected:
 	template<typename Arg>
 	st_socket(boost::asio::io_service& io_service_, Arg& arg) : st_timer(io_service_), _id(-1), next_layer_(io_service_, arg), packer_(boost::make_shared<Packer>()), started_(false) {reset_state();}
 
-	void reset() {reset_state(); clear_buffer(); time_recv_idle = boost::posix_time::time_duration(); st_timer::reset();}
+	void reset()
+	{
+		boost::system::error_code ec;
+		ST_THIS lowest_layer().close(ec);
+
+		reset_state();
+		clear_buffer();
+		time_recv_idle = boost::posix_time::time_duration();
+
+		st_timer::reset();
+	}
+
 	void reset_state()
 	{
+		packer_->reset_state();
+
 		posting = false;
 		sending = suspend_send_msg_ = false;
 		dispatching = suspend_dispatch_msg_ = false;
@@ -376,7 +389,6 @@ private:
 protected:
 	boost::uint_fast64_t _id;
 	Socket next_layer_;
-	boost::shared_mutex close_mutex;
 
 	InMsgType last_send_msg;
 	OutMsgType last_dispatch_msg;

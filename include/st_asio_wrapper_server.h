@@ -143,7 +143,7 @@ protected:
 					client_ptr->start();
 				else
 				{
-					client_ptr->show_info("client:", "been refused cause of too many clients.");
+					client_ptr->show_info("client:", "been refused because of too many clients.");
 					client_ptr->force_close();
 				}
 			}

@@ -202,10 +202,9 @@ private:
 		{
 			connected = reconnecting = true;
 			ST_THIS reset_state();
+			on_connect();
 			ST_THIS send_msg(); //send buffer may have msgs, send them
 			do_start();
-
-			on_connect();
 		}
 		else
 			prepare_next_reconnect(ec);

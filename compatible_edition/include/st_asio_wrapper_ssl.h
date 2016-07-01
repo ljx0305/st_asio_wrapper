@@ -113,9 +113,8 @@ private:
 		{
 			ST_THIS connected = ST_THIS reconnecting = false;
 			ST_THIS reset_state();
-			do_start();
-
 			ST_THIS on_connect();
+			do_start();
 		}
 		else
 			ST_THIS prepare_next_reconnect(ec);

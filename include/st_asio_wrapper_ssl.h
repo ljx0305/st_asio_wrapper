@@ -210,13 +210,6 @@ private:
 		on_handshake(ec, client_ptr);
 		if (!ec && ST_THIS add_client(client_ptr))
 			client_ptr->start();
-		else
-		{
-			if (!ec)
-				client_ptr->show_info("client:", "been refused because of too many clients.");
-
-			client_ptr->force_close();
-		}
 	}
 };
 typedef st_ssl_server_base<> st_ssl_server;

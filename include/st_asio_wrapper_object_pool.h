@@ -24,28 +24,28 @@
 #define ST_ASIO_MAX_OBJECT_NUM	4096
 #endif
 
-//something like memory pool, if you open ST_ASIO_REUSE_OBJECT, all object in temp_object_can will never be freed, but waiting for reuse
-//or, st_object_pool will free the objects in temp_object_can automatically and periodically, use ST_ASIO_SOCKET_FREE_INTERVAL to set the interval,
+//define ST_ASIO_REUSE_OBJECT macro will enable object pool, all objects in temp_object_can will never be freed, but kept for reusing,
+//otherwise, st_object_pool will free objects in temp_object_can automatically and periodically, ST_ASIO_FREE_OBJECT_INTERVAL means the interval, unit is second,
 //see temp_object_can at the end of st_object_pool class for more details.
+//please note that even if you defined ST_ASIO_REUSE_OBJECT macro, ST_ASIO_FREE_OBJECT_INTERVAL macro is still useful, it will make st_object_pool
+//to close (just close, not free, Object must has close function which takes no parameter) objects automatically and periodically for saving SOCKET handles.
 #ifndef ST_ASIO_REUSE_OBJECT
-	#ifndef ST_ASIO_SOCKET_FREE_INTERVAL
-	#define ST_ASIO_SOCKET_FREE_INTERVAL	10 //seconds, validate only if ST_ASIO_REUSE_OBJECT not defined
+	#ifndef ST_ASIO_FREE_OBJECT_INTERVAL
+	#define ST_ASIO_FREE_OBJECT_INTERVAL	10 //seconds, validate only if ST_ASIO_REUSE_OBJECT not defined
 	#endif
 #endif
 
-//define this to have st_server_socket_base invoke st_object_pool::clear_all_closed_object() automatically and periodically
-//this feature may influence performance when huge number of objects exist,
-//so, re-write st_server_socket_base::on_recv_error and invoke st_object_pool::del_object() is recommended in long connection system
-//in short connection system, you are recommended to open this feature, use ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL to set the interval
-#ifdef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
-#ifndef ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL
-#define ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL	60 //seconds, validate only if ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET defined
-#endif
-#endif
+//define ST_ASIO_CLEAR_OBJECT_INTERVAL macro to let st_object_pool to invoke clear_obsoleted_object() automatically and periodically
+//this feature may affect performance with huge number of objects, so re-write st_server_socket_base::on_recv_error and invoke st_object_pool::del_object()
+//is recommended for long-term connection system, but for short-term connection system, you are recommended to open this feature.
+//you must define this macro as a value, not just define it, the value means the interval, unit is second
+//#define ST_ASIO_CLEAR_OBJECT_INTERVAL		60 //seconds
 
-#ifndef ST_ASIO_CLOSED_SOCKET_MAX_DURATION
-	#define ST_ASIO_CLOSED_SOCKET_MAX_DURATION	5 //seconds
-	//after this duration, the corresponding object can be freed from the heap or be reused
+//after this duration, corresponding objects in temp_object_can can be freed from the heap or reused,
+//you must define this macro as a value, not just define it, the value means the duration, unit is second.
+//if macro ST_ASIO_ENHANCED_STABILITY been defined, this macro is useless, object's life time is always zero.
+#ifndef ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME
+#define ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME	5 //seconds
 #endif
 
 namespace st_asio_wrapper
@@ -79,13 +79,20 @@ public:
 protected:
 	struct temp_object
 	{
-		const time_t closed_time;
 		object_ctype object_ptr;
 
-		temp_object(object_ctype& object_ptr_) : closed_time(time(nullptr)), object_ptr(object_ptr_) {assert(object_ptr);}
+#ifdef ST_ASIO_ENHANCED_STABILITY
+		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_) {assert(object_ptr);}
+
+		bool is_timeout() const {return true;}
+		bool is_timeout(time_t now) const {return true;}
+#else
+		const time_t closed_time;
+		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_), closed_time(time(nullptr)) {assert(object_ptr);}
 
 		bool is_timeout() const {return is_timeout(time(nullptr));}
-		bool is_timeout(time_t now) const {return closed_time <= now - ST_ASIO_CLOSED_SOCKET_MAX_DURATION;}
+		bool is_timeout(time_t now) const {return closed_time <= now - ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME;}
+#endif
 	};
 
 protected:
@@ -98,11 +105,11 @@ protected:
 
 	void start()
 	{
-#ifndef ST_ASIO_REUSE_OBJECT
-		set_timer(TIMER_FREE_SOCKET, 1000 * ST_ASIO_SOCKET_FREE_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_FREE_SOCKET == id); ST_THIS free_object(); return true;});
+#ifdef ST_ASIO_FREE_OBJECT_INTERVAL
+		set_timer(TIMER_FREE_SOCKET, 1000 * ST_ASIO_FREE_OBJECT_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_FREE_SOCKET == id); ST_THIS free_object(); return true;});
 #endif
-#ifdef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
-		set_timer(TIMER_CLEAR_SOCKET, 1000 * ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_CLEAR_SOCKET == id); ST_THIS clear_all_closed_object(); return true;});
+#ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
+		set_timer(TIMER_CLEAR_SOCKET, 1000 * ST_ASIO_CLEAR_OBJECT_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_CLEAR_SOCKET == id); ST_THIS clear_obsoleted_object(); return true;});
 #endif
 	}
 
@@ -252,8 +259,8 @@ public:
 	//Consider the following assumption:
 	//1.You don't invoke del_object in on_recv_error and on_send_error, or close the socket in on_unpack_error
 	//2.For some reason(I haven't met yet), on_recv_error, on_send_error and on_unpack_error not invoked
-	//st_object_pool will automatically invoke this function if ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET been defined
-	size_t clear_all_closed_object()
+	//st_object_pool will automatically invoke this function if ST_ASIO_CLEAR_OBJECT_INTERVAL been defined
+	size_t clear_obsoleted_object()
 	{
 		container_type objects;
 
@@ -261,6 +268,9 @@ public:
 		for (auto iter = std::begin(object_can); iter != std::end(object_can);)
 			if ((*iter).unique() && (*iter)->obsoleted())
 			{
+#ifdef ST_ASIO_ENHANCED_STABILITY
+				(*iter)->close();
+#endif
 				objects.insert(*iter);
 				iter = object_can.erase(iter);
 			}
@@ -283,7 +293,11 @@ public:
 	//(because the objects in temp_object_can are waiting for reuse and will never be freed)
 	//if you don't use object pool, st_object_pool will invoke this automatically and periodically, so you don't need to invoke this exactly
 	//return affected object number, if just_close equal to true, then closed objects will be treated as unaffected.
+#ifdef ST_ASIO_REUSE_OBJECT
+	size_t free_object(size_t num = -1, bool just_close = true)
+#else
 	size_t free_object(size_t num = -1, bool just_close = false)
+#endif
 	{
 		size_t num_affected = 0;
 		boost::unique_lock<boost::shared_mutex> lock(temp_object_can_mutex);
@@ -301,7 +315,6 @@ public:
 				else
 				{
 					++num_affected;
-					iter->object_ptr->close();
 					iter = temp_object_can.erase(iter);
 				}
 			}
@@ -323,9 +336,9 @@ protected:
 
 	//because all objects are dynamic created and stored in object_can, maybe when receiving error occur
 	//(you are recommended to delete the object from object_can, for example via st_server_base::del_client), some other asynchronous calls are still queued in boost::asio::io_service,
-	//and will be dequeued in the future, we must guarantee these objects not be freed from the heap, so we move these objects from object_can to temp_object_can,
-	//and free them from the heap in the near future, see ST_ASIO_CLOSED_SOCKET_MAX_DURATION macro for more details.
-	//if ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET been defined, clear_all_closed_object() will be invoked automatically and periodically to move all closed objects into temp_object_can.
+	//and will be dequeued in the future, we must guarantee these objects not be freed from the heap or reused, so we move these objects from object_can to temp_object_can,
+	//and free them from the heap or reuse them in the near future, see ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME macro for more details.
+	//if ST_ASIO_CLEAR_OBJECT_INTERVAL been defined, clear_obsoleted_object() will be invoked automatically and periodically to move all closed objects into temp_object_can.
 	boost::container::list<temp_object> temp_object_can;
 	boost::shared_mutex temp_object_can_mutex;
 };

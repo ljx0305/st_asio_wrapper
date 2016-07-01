@@ -4,7 +4,6 @@
 #define ST_ASIO_REUSE_OBJECT //use objects pool
 //#define ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER //force to use the msg recv buffer
 #define ST_ASIO_ENHANCED_STABILITY
-#define ST_ASIO_CLOSED_SOCKET_MAX_DURATION	0
 
 //use the following macro to control the type of packer and unpacker
 #define PACKER_UNPACKER_TYPE	1
@@ -217,7 +216,6 @@ int main(int argc, const char* argv[])
 #undef ST_ASIO_REUSE_OBJECT
 #undef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
 #undef ST_ASIO_ENHANCED_STABILITY
-#undef ST_ASIO_CLOSED_SOCKET_MAX_DURATION
 #undef ST_ASIO_DEFAULT_PACKER
 #undef ST_ASIO_DEFAULT_UNPACKER
 //restore configuration

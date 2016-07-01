@@ -47,9 +47,7 @@ protected:
 
 	void reset()
 	{
-		boost::system::error_code ec;
-		ST_THIS lowest_layer().close(ec);
-
+		close();
 		reset_state();
 		clear_buffer();
 		time_recv_idle = boost::posix_time::time_duration();

@@ -6,8 +6,7 @@
 #define ST_ASIO_SERVER_PORT		9527
 //#define ST_ASIO_REUSE_OBJECT //use objects pool
 //#define ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER //force to use the msg recv buffer
-//#define ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
-//#define ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL	1
+//#define ST_ASIO_CLEAR_OBJECT_INTERVAL	1
 #define ST_ASIO_WANT_MSG_SEND_NOTIFY
 //configuration
 
@@ -159,11 +158,11 @@ public:
 
 		switch (test_index % 6)
 		{
-#ifdef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
+#ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
 			//method #1
-			//notice: these methods need to define ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET and ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL macro, because it just close the st_socket,
+			//notice: these methods need to define ST_ASIO_CLEAR_OBJECT_INTERVAL macro, because it just close the st_socket,
 			//not really remove them from object pool, this will cause test_client still send data via them, and wait responses from them.
-			//for this scenario, the smaller ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVAL macro is, the better experience you will get, so set it to 1 second.
+			//for this scenario, the smaller ST_ASIO_CLEAR_OBJECT_INTERVAL macro is, the better experience you will get, so set it to 1 second.
 		case 0: do_something_to_one([&n](object_ctype& item) {return n-- > 0 ? item->graceful_close(), false : true;});				break;
 		case 1: do_something_to_one([&n](object_ctype& item) {return n-- > 0 ? item->graceful_close(false, false), false : true;}); break;
 		case 2: do_something_to_one([&n](object_ctype& item) {return n-- > 0 ? item->force_close(), false : true;});				break;
@@ -191,9 +190,9 @@ public:
 };
 
 #if defined(_MSC_VER) || defined(__i386__)
-	#define fractional_seconds_format "%lld"
+#define fractional_seconds_format "%lld"
 #else // defined(__GNUC__) && defined(__x86_64__)
-	#define fractional_seconds_format "%ld"
+#define fractional_seconds_format "%ld"
 #endif
 
 int main(int argc, const char* argv[])
@@ -230,7 +229,7 @@ int main(int argc, const char* argv[])
 		client.add_client(port, ip);
 
 	auto min_thread_num = 1;
-#ifdef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
+#ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
 	++min_thread_num;
 #endif
 
@@ -281,7 +280,7 @@ int main(int argc, const char* argv[])
 				continue;
 			}
 
-#ifdef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
+#ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
 			link_num = client.size();
 			printf("link number: " ST_ASIO_SF "\n", link_num);
 #endif
@@ -409,8 +408,7 @@ int main(int argc, const char* argv[])
 #undef ST_ASIO_SERVER_PORT
 #undef ST_ASIO_REUSE_OBJECT
 #undef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
-#undef ST_ASIO_AUTO_CLEAR_CLOSED_SOCKET
-#undef ST_ASIO_CLEAR_CLOSED_SOCKET_INTERVA
+#undef ST_ASIO_CLEAR_OBJECT_INTERVAL
 #undef ST_ASIO_WANT_MSG_SEND_NOTIFY
 #undef ST_ASIO_DEFAULT_PACKER
 #undef ST_ASIO_DEFAULT_UNPACKER

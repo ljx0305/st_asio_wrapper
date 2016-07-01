@@ -147,7 +147,7 @@ protected:
 		if ((boost::asio::error::operation_aborted != ec || reconnecting) && !ST_THIS stopped())
 		{
 #ifdef _WIN32
-			if (boost::asio::error::connection_refused != ec && boost::asio_error::network_unreachable != ec && boost::asio::error::timed_out != ec)
+			if (boost::asio::error::connection_refused != ec && boost::asio::error::network_unreachable != ec && boost::asio::error::timed_out != ec)
 #endif
 			{
 				boost::system::error_code ec;

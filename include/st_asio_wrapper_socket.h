@@ -105,6 +105,18 @@ public:
 		if (!started_)
 			started_ = do_start();
 	}
+
+	//return false not means failure, but means already closed.
+	bool close()
+	{
+		if (!lowest_layer().is_open())
+			return false;
+
+		boost::system::error_code ec;
+		lowest_layer().close(ec);
+		return true;
+	}
+
 	bool send_msg() //return false if send buffer is empty or sending not allowed or io_service stopped
 	{
 		boost::unique_lock<boost::shared_mutex> lock(send_msg_buffer_mutex);
@@ -272,7 +284,7 @@ protected:
 				dispatch_all = !(dispatching = false);
 			else if (!dispatching)
 			{
-				if (!lowest_layer().is_open())
+				if (!started())
 					dispatch_all = true;
 				else if (!recv_msg_buffer.empty())
 				{

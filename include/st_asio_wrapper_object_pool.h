@@ -282,21 +282,33 @@ public:
 	//if you use object pool(define ST_ASIO_REUSE_OBJECT), you may need to free some objects after the object pool(get_closed_object_size()) goes big enough for memory saving
 	//(because the objects in temp_object_can are waiting for reuse and will never be freed)
 	//if you don't use object pool, st_object_pool will invoke this automatically and periodically, so you don't need to invoke this exactly
-	void free_object(size_t num = -1)
+	//return affected object number, if just_close equal to true, then closed objects will be treated as unaffected.
+	size_t free_object(size_t num = -1, bool just_close = false)
 	{
-		if (0 == num)
-			return;
-
+		size_t num_affected = 0;
 		boost::unique_lock<boost::shared_mutex> lock(temp_object_can_mutex);
 		//objects are order by time, so we don't have to go through all items in temp_object_can
 		for (auto iter = std::begin(temp_object_can); num > 0 && iter != std::end(temp_object_can) && iter->is_timeout();)
 			if (iter->object_ptr.unique() && iter->object_ptr->obsoleted())
 			{
-				iter = temp_object_can.erase(iter);
 				--num;
+				if (just_close)
+				{
+					if (iter->object_ptr->close())
+						++num_affected;
+					++iter;
+				}
+				else
+				{
+					++num_affected;
+					iter->object_ptr->close();
+					iter = temp_object_can.erase(iter);
+				}
 			}
 			else
 				++iter;
+
+		return num_affected;
 	}
 
 	DO_SOMETHING_TO_ALL_MUTEX(object_can, object_can_mutex)

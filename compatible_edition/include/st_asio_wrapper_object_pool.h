@@ -31,7 +31,7 @@
 //to close (just close, not free, Object must has close function which takes no parameter) objects automatically and periodically for saving SOCKET handles.
 #ifndef ST_ASIO_REUSE_OBJECT
 	#ifndef ST_ASIO_FREE_OBJECT_INTERVAL
-	#define ST_ASIO_FREE_OBJECT_INTERVAL	10 //seconds, validate only if ST_ASIO_REUSE_OBJECT not defined
+	#define ST_ASIO_FREE_OBJECT_INTERVAL	10 //seconds
 	#endif
 #endif
 
@@ -290,7 +290,7 @@ public:
 
 	//free a specific number of objects
 	//if you use object pool(define ST_ASIO_REUSE_OBJECT), you may need to free some objects after the object pool(get_closed_object_size()) goes big enough for memory saving
-	//(because the objects in temp_object_can are waiting for reuse and will never be freed)
+	//(because the objects in temp_object_can are waiting for reusing and will never be freed)
 	//if you don't use object pool, st_object_pool will invoke this automatically and periodically, so you don't need to invoke this exactly
 	//return affected object number, if just_close equal to true, then closed objects will be treated as unaffected.
 #ifdef ST_ASIO_REUSE_OBJECT

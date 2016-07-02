@@ -2,6 +2,7 @@
 //configuration
 #define ST_ASIO_SERVER_PORT		9528
 #define ST_ASIO_REUSE_OBJECT //use objects pool
+#define ST_ASIO_FREE_OBJECT_INTERVAL	60
 //#define ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER //force to use the msg recv buffer
 #define ST_ASIO_ENHANCED_STABILITY
 
@@ -218,6 +219,7 @@ int main(int argc, const char* argv[])
 //restore configuration
 #undef ST_ASIO_SERVER_PORT
 #undef ST_ASIO_REUSE_OBJECT
+#undef ST_ASIO_FREE_OBJECT_INTERVAL
 #undef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
 #undef ST_ASIO_ENHANCED_STABILITY
 #undef ST_ASIO_DEFAULT_PACKER

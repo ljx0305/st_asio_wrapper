@@ -313,15 +313,11 @@ public:
 				if (just_close)
 				{
 					if (iter->object_ptr->close())
-					{
-						unified_out::info_out("closed an object.");
 						++num_affected;
-					}
 					++iter;
 				}
 				else
 				{
-					unified_out::info_out("freed an object.");
 					++num_affected;
 					iter = temp_object_can.erase(iter);
 				}

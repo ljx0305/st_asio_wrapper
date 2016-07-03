@@ -255,10 +255,10 @@ public:
 
 	void list_all_object() {do_something_to_all([](object_ctype& item) {item->show_info("", ""); });}
 
-	//Clear all closed objects from the set
-	//Consider the following assumption:
-	//1.You don't invoke del_object in on_recv_error and on_send_error, or close the socket in on_unpack_error
-	//2.For some reason(I haven't met yet), on_recv_error, on_send_error and on_unpack_error not invoked
+	//Kick out obsoleted objects
+	//Consider the following assumptions:
+	//1.You didn't invoke del_object in on_recv_error or other places.
+	//2.For some reason(I haven't met yet), on_recv_error not been invoked
 	//st_object_pool will automatically invoke this function if ST_ASIO_CLEAR_OBJECT_INTERVAL been defined
 	size_t clear_obsoleted_object()
 	{
@@ -268,6 +268,7 @@ public:
 		for (auto iter = std::begin(object_can); iter != std::end(object_can);)
 			if ((*iter).unique() && (*iter)->obsoleted())
 			{
+				(*iter)->show_info("object:", "is obsoleted, kick it out, it will be freed or reused in the future.");
 #ifdef ST_ASIO_ENHANCED_STABILITY
 				(*iter)->close();
 #endif
@@ -281,6 +282,8 @@ public:
 		auto size = objects.size();
 		if (0 != size)
 		{
+			unified_out::warning_out(ST_ASIO_SF " object(s) been kicked out!", size);
+
 			boost::unique_lock<boost::shared_mutex> lock(temp_object_can_mutex);
 			temp_object_can.insert(std::end(temp_object_can), std::begin(objects), std::end(objects));
 		}
@@ -288,10 +291,11 @@ public:
 		return size;
 	}
 
-	//free a specific number of objects
-	//if you use object pool(define ST_ASIO_REUSE_OBJECT), you may need to free some objects after the object pool(get_closed_object_size()) goes big enough for memory saving
-	//(because the objects in temp_object_can are waiting for reusing and will never be freed)
-	//if you don't use object pool, st_object_pool will invoke this automatically and periodically, so you don't need to invoke this exactly
+	//free or close a specific number of objects
+	//if you used object pool(define ST_ASIO_REUSE_OBJECT), you can manually call this function to free some objects after the object pool(get_closed_object_size())
+	// goes big enough for memory saving(because the objects in temp_object_can are waiting for reusing and will never be freed),
+	// you can also define ST_ASIO_FREE_OBJECT_INTERVAL to let st_object_pool to call this function automatically and periodically, but objects will only be closed.
+	//if you don't used object pool, st_object_pool will invoke this function automatically and periodically, so you don't need to invoke this function exactly
 	//return affected object number, if just_close equal to true, then closed objects will be treated as unaffected.
 #ifdef ST_ASIO_REUSE_OBJECT
 	size_t free_object(size_t num = -1, bool just_close = true)
@@ -309,17 +313,24 @@ public:
 				if (just_close)
 				{
 					if (iter->object_ptr->close())
+					{
+						unified_out::info_out("closed an object.");
 						++num_affected;
+					}
 					++iter;
 				}
 				else
 				{
+					unified_out::info_out("freed an object.");
 					++num_affected;
 					iter = temp_object_can.erase(iter);
 				}
 			}
 			else
 				++iter;
+
+		if (num_affected > 0)
+			unified_out::warning_out(ST_ASIO_SF " object(s) been %s!", num_affected, just_close ? "closed" : "freed");
 
 		return num_affected;
 	}

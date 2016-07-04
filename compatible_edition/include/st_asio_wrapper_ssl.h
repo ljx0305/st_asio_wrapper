@@ -149,11 +149,10 @@ public:
 	st_ssl_object_pool(st_service_pump& service_pump_, boost::asio::ssl::context::method m) : st_object_pool<Object>(service_pump_), ctx(m) {}
 	boost::asio::ssl::context& ssl_context() {return ctx;}
 
-	typename st_ssl_object_pool::object_type create_object()
-		{BOOST_AUTO(object_ptr, boost::make_shared<Object>(boost::ref(ST_THIS service_pump), boost::ref(ctx))); return ST_THIS post_create(object_ptr), object_ptr;}
-
+	using st_object_pool<Object>::create_object;
+	typename st_ssl_object_pool::object_type create_object() {return create_object(boost::ref(ST_THIS service_pump), boost::ref(ctx));}
 	template<typename Arg>
-	typename st_ssl_object_pool::object_type create_object(Arg& arg) {BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg, boost::ref(ctx))); return ST_THIS post_create(object_ptr), object_ptr;}
+	typename st_ssl_object_pool::object_type create_object(Arg& arg) {return create_object(arg, boost::ref(ctx));}
 
 protected:
 	boost::asio::ssl::context ctx;

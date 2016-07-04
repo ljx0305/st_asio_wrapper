@@ -142,11 +142,9 @@ protected:
 		return exist;
 	}
 
-	virtual void post_create(object_ctype& object_ptr) {if (object_ptr) object_ptr->id(++cur_id);}
-
-#ifdef ST_ASIO_REUSE_OBJECT
 	object_type reuse_object()
 	{
+#ifdef ST_ASIO_REUSE_OBJECT
 		boost::unique_lock<boost::shared_mutex> lock(temp_object_can_mutex);
 		//objects are order by time, so we don't have to go through all items in temp_object_can
 		for (auto iter = std::begin(temp_object_can); iter != std::end(temp_object_can) && iter->is_timeout(); ++iter)
@@ -159,19 +157,25 @@ protected:
 				object_ptr->reset();
 				return object_ptr;
 			}
-
+#endif
 		return object_type();
 	}
 
-public:
-	object_type create_object()
+	void init_object(object_ctype& object_ptr)
 	{
-		auto object_ptr = reuse_object();
-		if (!object_ptr)
-			object_ptr = boost::make_shared<Object>(service_pump);
-
-		return post_create(object_ptr), object_ptr;
+		if (object_ptr)
+		{
+			object_ptr->id(++cur_id);
+			on_create(object_ptr);
+		}
+		else
+			unified_out::error_out("create object failed!");
 	}
+
+	virtual void on_create(object_ctype& object_ptr) {}
+
+public:
+	object_type create_object() {return create_object(service_pump);}
 
 	template<typename Arg>
 	object_type create_object(Arg& arg)
@@ -179,16 +183,21 @@ public:
 		auto object_ptr = reuse_object();
 		if (!object_ptr)
 			object_ptr = boost::make_shared<Object>(arg);
+		init_object(object_ptr);
 
-		return post_create(object_ptr), object_ptr;
+		return object_ptr;
 	}
-#else
-public:
-	object_type create_object() {auto object_ptr = boost::make_shared<Object>(service_pump); return post_create(object_ptr), object_ptr;}
 
-	template<typename Arg>
-	object_type create_object(Arg& arg) {auto object_ptr = boost::make_shared<Object>(arg); return post_create(object_ptr), object_ptr;}
-#endif
+	template<typename Arg1, typename Arg2>
+	object_type create_object(Arg1& arg1, Arg2& arg2)
+	{
+		auto object_ptr = reuse_object();
+		if (!object_ptr)
+			object_ptr = boost::make_shared<Object>(arg1, arg2);
+		init_object(object_ptr);
+
+		return object_ptr;
+	}
 
 	//to configure unordered_set(for example, set factor or reserved size), not locked the mutex, so must be called before service_pump starting up.
 	container_type& container() {return object_can;}
@@ -208,6 +217,13 @@ public:
 		return temp_object_can.size();
 	}
 
+	object_type find(uint_fast64_t id)
+	{
+		boost::shared_lock<boost::shared_mutex> lock(object_can_mutex);
+		auto iter = object_can.find(id, st_object_hasher(), st_object_equal());
+		return iter != std::end(object_can) ? *iter : object_type();
+	}
+
 	//this method has linear complexity, please note.
 	object_type at(size_t index)
 	{
@@ -224,13 +240,7 @@ public:
 		return index < temp_object_can.size() ? std::next(std::begin(temp_object_can), index)->object_ptr : object_type();
 	}
 
-	object_type find(uint_fast64_t id)
-	{
-		boost::shared_lock<boost::shared_mutex> lock(object_can_mutex);
-		auto iter = object_can.find(id, st_object_hasher(), st_object_equal());
-		return iter != std::end(object_can) ? *iter : object_type();
-	}
-
+	//this method has linear complexity, please note.
 	object_type closed_object_find(uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(temp_object_can_mutex);
@@ -240,6 +250,7 @@ public:
 		return object_type();
 	}
 
+	//this method has linear complexity, please note.
 	object_type closed_object_pop(uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(temp_object_can_mutex);

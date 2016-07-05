@@ -70,6 +70,9 @@ public:
 
 		return false;
 	}
+
+	//unseal object creation for client endpoint object pool.
+	using Pool::create_object;
 };
 
 } //namespace

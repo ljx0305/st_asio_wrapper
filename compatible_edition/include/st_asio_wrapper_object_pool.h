@@ -142,9 +142,22 @@ protected:
 		return exist;
 	}
 
+	virtual void on_create(object_ctype& object_ptr) {}
+
+	void init_object(object_ctype& object_ptr)
+	{
+		if (object_ptr)
+		{
+			object_ptr->id(++cur_id);
+			on_create(object_ptr);
+		}
+		else
+			unified_out::error_out("create object failed!");
+	}
+
+#ifdef ST_ASIO_REUSE_OBJECT
 	object_type reuse_object()
 	{
-#ifdef ST_ASIO_REUSE_OBJECT
 		boost::unique_lock<boost::shared_mutex> lock(temp_object_can_mutex);
 		//objects are order by time, so we don't have to go through all items in temp_object_can
 		for (BOOST_AUTO(iter, temp_object_can.begin()); iter != temp_object_can.end() && iter->is_timeout(); ++iter)
@@ -157,25 +170,9 @@ protected:
 				object_ptr->reset();
 				return object_ptr;
 			}
-#endif
+
 		return object_type();
 	}
-	
-	void init_object(object_ctype& object_ptr)
-	{
-		if (object_ptr)
-		{
-			object_ptr->id(++cur_id);
-			on_create(object_ptr);
-		}
-		else
-			unified_out::error_out("create object failed!");
-	}
-
-	virtual void on_create(object_ctype& object_ptr) {}
-
-public:
-	object_type create_object() {return create_object(boost::ref(service_pump));}
 
 	template<typename Arg>
 	object_type create_object(Arg& arg)
@@ -183,8 +180,8 @@ public:
 		BOOST_AUTO(object_ptr, reuse_object());
 		if (!object_ptr)
 			object_ptr = boost::make_shared<Object>(arg);
-		init_object(object_ptr);
 
+		init_object(object_ptr);
 		return object_ptr;
 	}
 
@@ -194,11 +191,31 @@ public:
 		BOOST_AUTO(object_ptr, reuse_object());
 		if (!object_ptr)
 			object_ptr = boost::make_shared<Object>(arg1, arg2);
-		init_object(object_ptr);
 
+		init_object(object_ptr);
+		return object_ptr;
+	}
+#else
+	template<typename Arg>
+	object_type create_object(Arg& arg)
+	{
+		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg);
+		init_object(object_ptr);
 		return object_ptr;
 	}
 
+	template<typename Arg1, typename Arg2>
+	object_type create_object(Arg1& arg1, Arg2& arg2)
+	{
+		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg1, arg2);
+		init_object(object_ptr);
+		return object_ptr;
+	}
+#endif
+
+	object_type create_object() {return create_object(boost::ref(service_pump));}
+
+public:
 	//to configure unordered_set(for example, set factor or reserved size), not locked the mutex, so must be called before service_pump starting up.
 	container_type& container() {return object_can;}
 

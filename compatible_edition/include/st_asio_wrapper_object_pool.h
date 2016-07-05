@@ -296,7 +296,11 @@ public:
 		for (BOOST_AUTO(iter, object_can.begin()); iter != object_can.end();)
 			if ((*iter).unique() && (*iter)->obsoleted())
 			{
-				(*iter)->show_info("object:", "is obsoleted, kick it out, it will be freed or reused in the future.");
+#ifdef ST_ASIO_REUSE_OBJECT
+				(*iter)->show_info("object:", "is obsoleted, kick it out, it will be reused in the future.");
+#else
+				(*iter)->show_info("object:", "is obsoleted, kick it out, it will be freed in the future.");
+#endif
 #ifdef ST_ASIO_ENHANCED_STABILITY
 				(*iter)->close();
 #endif

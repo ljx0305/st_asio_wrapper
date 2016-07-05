@@ -231,13 +231,19 @@ int main(int argc, const char* argv[])
 	unsigned short port = argc > 1 ? atoi(argv[1]) : ST_ASIO_SERVER_PORT;
 	std::string ip = argc > 2 ? argv[2] : ST_ASIO_SERVER_IP;
 
-	//method #1, add clients first without any arguments, then set the server address.
-	for (size_t i = 0; i < link_num / 2; ++i)
+	//method #1, create and add clients manually.
+	BOOST_AUTO(client_ptr, client.create_object());
+	//client_ptr->set_server_addr(port, ip); //we don't have to set server address at here, the following do_something_to_all will do it for me
+	//some other initializations according to your business
+	client.add_client(client_ptr, false);
+
+	//method #2, add clients first without any arguments, then set the server address.
+	for (size_t i = 1; i < link_num / 2; ++i)
 		client.add_client();
 	client.do_something_to_all(boost::bind(&test_socket::set_server_addr, _1, port, boost::ref(ip)));
 
-	//method #2, set the server address via add_client.
-	for (size_t i = link_num / 2; i < link_num; ++i)
+	//method #3, add clients and set server address in one invocation.
+	for (size_t i = std::max(1U, link_num / 2); i < link_num; ++i)
 		client.add_client(port, ip);
 
 	int min_thread_num = 1;

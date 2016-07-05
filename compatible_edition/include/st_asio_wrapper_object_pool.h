@@ -199,7 +199,7 @@ protected:
 	template<typename Arg>
 	object_type create_object(Arg& arg)
 	{
-		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg);
+		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg));
 		init_object(object_ptr);
 		return object_ptr;
 	}
@@ -207,7 +207,7 @@ protected:
 	template<typename Arg1, typename Arg2>
 	object_type create_object(Arg1& arg1, Arg2& arg2)
 	{
-		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg1, arg2);
+		BOOST_AUTO(object_ptr, boost::make_shared<Object>(arg1, arg2));
 		init_object(object_ptr);
 		return object_ptr;
 	}

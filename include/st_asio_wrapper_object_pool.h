@@ -174,11 +174,11 @@ protected:
 	{
 		boost::unique_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
 		//objects are order by time, so we don't have to go through all items in invalid_object_can
-		for (auto iter = std::begin(temp_object_can); iter != std::end(invalid_object_can) && iter->is_timeout(); ++iter)
+		for (auto iter = std::begin(invalid_object_can); iter != std::end(invalid_object_can) && iter->is_timeout(); ++iter)
 			if (iter->object_ptr.unique() && iter->object_ptr->obsoleted())
 			{
 				auto object_ptr(std::move(iter->object_ptr));
-				temp_object_can.erase(iter);
+				invalid_object_can.erase(iter);
 				lock.unlock();
 
 				object_ptr->reset();
@@ -289,7 +289,7 @@ public:
 			if (id == iter->object_ptr->id())
 			{
 				auto object_ptr = iter->object_ptr;
-				temp_object_can.erase(iter);
+				invalid_object_can.erase(iter);
 				return object_ptr;
 			}
 		return object_type();
@@ -331,7 +331,7 @@ public:
 			unified_out::warning_out(ST_ASIO_SF " object(s) been kicked out!", size);
 
 			boost::unique_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
-			temp_object_can.insert(std::end(invalid_object_can), std::begin(objects), std::end(objects));
+			invalid_object_can.insert(std::end(invalid_object_can), std::begin(objects), std::end(objects));
 		}
 
 		return size;

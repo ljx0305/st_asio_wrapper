@@ -57,7 +57,7 @@ static_assert(ST_ASIO_MAX_OBJECT_NUM > 0, "object capacity must be bigger than z
 	#endif
 #else
 	#ifndef ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME
-	#define ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME      5 //seconds
+	#define ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME	5 //seconds
 	#endif
 	static_assert(ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME > 0, "obsoleted object's life time must be bigger than zero.");
 #endif

@@ -18,7 +18,7 @@
  * 2012.7.7 - 2016.7.7
  * Beta edition
  *
- * 2016.7.7            version 1.0.0
+ * 2016.7.7		version 1.0.0
  * First release
  *
  */

@@ -93,18 +93,18 @@ public:
 	typedef boost::unordered::unordered_set<object_type, st_object_hasher, st_object_equal> container_type;
 
 protected:
-	struct temp_object
+	struct invalid_object
 	{
 		object_ctype object_ptr;
 
 #ifdef ST_ASIO_ENHANCED_STABILITY
-		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_) {assert(object_ptr);}
+		invalid_object(object_ctype& object_ptr_) : object_ptr(object_ptr_) {assert(object_ptr);}
 
 		bool is_timeout() const {return true;}
 		bool is_timeout(time_t now) const {return true;}
 #else
 		const time_t kick_out_time;
-		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_), kick_out_time(time(NULL)) {assert(object_ptr);}
+		invalid_object(object_ctype& object_ptr_) : object_ptr(object_ptr_), kick_out_time(time(NULL)) {assert(object_ptr);}
 
 		bool is_timeout() const {return is_timeout(time(NULL));}
 		bool is_timeout(time_t now) const {return kick_out_time <= now - ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME;}
@@ -415,7 +415,7 @@ protected:
 	//and will be dequeued in the future, we must guarantee these objects not be freed from the heap or reused, so we move these objects from object_can to invalid_object_can,
 	//and free them from the heap or reuse them in the near future, see ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME macro for more details.
 	//if ST_ASIO_CLEAR_OBJECT_INTERVAL been defined, clear_obsoleted_object() will be invoked automatically and periodically to move all invalid objects into invalid_object_can.
-	boost::container::list<temp_object> invalid_object_can;
+	boost::container::list<invalid_object> invalid_object_can;
 	boost::shared_mutex invalid_object_can_mutex;
 };
 

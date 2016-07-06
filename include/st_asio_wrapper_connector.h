@@ -159,7 +159,7 @@ protected:
 			auto delay = prepare_reconnect(ec);
 			if (delay >= 0)
 			{
-				ST_THIS set_timer(TIMER_CONNECT, delay, [this](unsigned char id)->bool {assert(TIMER_CONNECT == id); ST_THIS do_start(); return false;});
+				ST_THIS set_timer(TIMER_CONNECT, delay, [this](unsigned char id)->bool {ST_THIS do_start(); return false;});
 				return true;
 			}
 		}

@@ -91,18 +91,18 @@ public:
 	typedef boost::unordered::unordered_set<object_type, st_object_hasher, st_object_equal> container_type;
 
 protected:
-	struct temp_object
+	struct invalid_object
 	{
 		object_ctype object_ptr;
 
 #ifdef ST_ASIO_ENHANCED_STABILITY
-		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_) {assert(object_ptr);}
+		invalid_object(object_ctype& object_ptr_) : object_ptr(object_ptr_) {assert(object_ptr);}
 
 		bool is_timeout() const {return true;}
 		bool is_timeout(time_t now) const {return true;}
 #else
 		const time_t kick_out_time;
-		temp_object(object_ctype& object_ptr_) : object_ptr(object_ptr_), kick_out_time(time(nullptr)) {assert(object_ptr);}
+		invalid_object(object_ctype& object_ptr_) : object_ptr(object_ptr_), kick_out_time(time(nullptr)) {assert(object_ptr);}
 
 		bool is_timeout() const {return is_timeout(time(nullptr));}
 		bool is_timeout(time_t now) const {return kick_out_time <= now - ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME;}
@@ -120,10 +120,10 @@ protected:
 	void start()
 	{
 #ifdef ST_ASIO_FREE_OBJECT_INTERVAL
-		set_timer(TIMER_FREE_SOCKET, 1000 * ST_ASIO_FREE_OBJECT_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_FREE_SOCKET == id); ST_THIS free_object(); return true;});
+		set_timer(TIMER_FREE_SOCKET, 1000 * ST_ASIO_FREE_OBJECT_INTERVAL, [this](unsigned char id)->bool {ST_THIS free_object(); return true;});
 #endif
 #ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
-		set_timer(TIMER_CLEAR_SOCKET, 1000 * ST_ASIO_CLEAR_OBJECT_INTERVAL, [this](unsigned char id)->bool {assert(TIMER_CLEAR_SOCKET == id); ST_THIS clear_obsoleted_object(); return true;});
+		set_timer(TIMER_CLEAR_SOCKET, 1000 * ST_ASIO_CLEAR_OBJECT_INTERVAL, [this](unsigned char id)->bool {ST_THIS clear_obsoleted_object(); return true;});
 #endif
 	}
 
@@ -392,7 +392,7 @@ protected:
 	//and will be dequeued in the future, we must guarantee these objects not be freed from the heap or reused, so we move these objects from object_can to invalid_object_can,
 	//and free them from the heap or reuse them in the near future, see ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME macro for more details.
 	//if ST_ASIO_CLEAR_OBJECT_INTERVAL been defined, clear_obsoleted_object() will be invoked automatically and periodically to move all invalid objects into invalid_object_can.
-	boost::container::list<temp_object> invalid_object_can;
+	boost::container::list<invalid_object> invalid_object_can;
 	boost::shared_mutex invalid_object_can_mutex;
 };
 

@@ -21,9 +21,11 @@
 #ifndef ST_ASIO_SERVER_PORT
 #define ST_ASIO_SERVER_PORT			5050
 #endif
+static_assert(ST_ASIO_SERVER_PORT > 0, "server port must be bigger than zero.");
 #ifndef ST_ASIO_RECONNECT_INTERVAL
 #define ST_ASIO_RECONNECT_INTERVAL	500 //millisecond(s)
 #endif
+static_assert(ST_ASIO_RECONNECT_INTERVAL >= 0, "reconnect interval must be bigger than or equal to zero.");
 
 namespace st_asio_wrapper
 {

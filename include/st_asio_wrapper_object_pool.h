@@ -23,6 +23,7 @@
 #ifndef ST_ASIO_MAX_OBJECT_NUM
 #define ST_ASIO_MAX_OBJECT_NUM	4096
 #endif
+static_assert(ST_ASIO_MAX_OBJECT_NUM > 0, "object capacity must be bigger than zero.");
 
 //define ST_ASIO_REUSE_OBJECT macro will enable object pool, all objects in temp_object_can will never be freed, but kept for reusing,
 //otherwise, st_object_pool will free objects in temp_object_can automatically and periodically, ST_ASIO_FREE_OBJECT_INTERVAL means the interval, unit is second,
@@ -34,18 +35,31 @@
 	#define ST_ASIO_FREE_OBJECT_INTERVAL	10 //seconds
 	#endif
 #endif
+#if defined(ST_ASIO_FREE_OBJECT_INTERVAL) && ST_ASIO_FREE_OBJECT_INTERVAL <= 0
+	#error free/close object interval must be bigger than zero.
+#endif
 
 //define ST_ASIO_CLEAR_OBJECT_INTERVAL macro to let st_object_pool to invoke clear_obsoleted_object() automatically and periodically
 //this feature may affect performance with huge number of objects, so re-write st_server_socket_base::on_recv_error and invoke st_object_pool::del_object()
 //is recommended for long-term connection system, but for short-term connection system, you are recommended to open this feature.
 //you must define this macro as a value, not just define it, the value means the interval, unit is second
 //#define ST_ASIO_CLEAR_OBJECT_INTERVAL		60 //seconds
+#if defined(ST_ASIO_CLEAR_OBJECT_INTERVAL) && ST_ASIO_CLEAR_OBJECT_INTERVAL <= 0
+	#error clear object interval must be bigger than zero.
+#endif
 
 //after this duration, corresponding objects in temp_object_can can be freed from the heap or reused,
 //you must define this macro as a value, not just define it, the value means the duration, unit is second.
 //if macro ST_ASIO_ENHANCED_STABILITY been defined, this macro is useless, object's life time is always zero.
-#ifndef ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME
-#define ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME	5 //seconds
+#ifdef ST_ASIO_ENHANCED_STABILITY
+	#if defined(ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME) && ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME != 0
+		#warning ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME will always be zero if ST_ASIO_ENHANCED_STABILITY macro been defined.
+	#endif
+#else
+	#ifndef ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME
+	#define ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME      5 //seconds
+	#endif
+	static_assert(ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME > 0, "obsoleted object's life time must be bigger than zero.");
 #endif
 
 namespace st_asio_wrapper

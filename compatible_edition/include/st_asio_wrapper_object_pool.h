@@ -109,6 +109,7 @@ protected:
 		bool is_timeout() const {return is_timeout(time(NULL));}
 		bool is_timeout(time_t now) const {return kick_out_time <= now - ST_ASIO_OBSOLETED_OBJECT_LIFE_TIME;}
 #endif
+		bool is_equal_to(boost::uint_fast64_t id) const {return object_ptr->id() == id;}
 	};
 
 protected:
@@ -277,23 +278,21 @@ public:
 	object_type invalid_object_find(boost::uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
-		for (BOOST_AUTO(iter, invalid_object_can.begin()); iter != invalid_object_can.end(); ++iter)
-			if (id == iter->object_ptr->id())
-				return iter->object_ptr;
-		return object_type();
+		BOOST_AUTO(iter, std::find_if(invalid_object_can.begin(), invalid_object_can.end(), boost::bind(&invalid_object::is_equal_to, _1, id)));
+		return iter == invalid_object_can.end() ? object_type() : iter->object_ptr;
 	}
 
 	//this method has linear complexity, please note.
 	object_type invalid_object_pop(boost::uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
-		for (BOOST_AUTO(iter, invalid_object_can.begin()); iter != invalid_object_can.end(); ++iter)
-			if (id == iter->object_ptr->id())
-			{
-				BOOST_AUTO(object_ptr, iter->object_ptr);
-				invalid_object_can.erase(iter);
-				return object_ptr;
-			}
+		BOOST_AUTO(iter, std::find_if(invalid_object_can.begin(), invalid_object_can.end(), boost::bind(&invalid_object::is_equal_to, _1, id)));
+		if (iter != invalid_object_can.end())
+		{
+			BOOST_AUTO(object_ptr, iter->object_ptr);
+			invalid_object_can.erase(iter);
+			return object_ptr;
+		}
 		return object_type();
 	}
 

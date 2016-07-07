@@ -275,23 +275,21 @@ public:
 	object_type invalid_object_find(uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
-		for (auto iter = std::begin(invalid_object_can); iter != std::end(invalid_object_can); ++iter)
-			if (id == iter->object_ptr->id())
-				return iter->object_ptr;
-		return object_type();
+		auto iter = std::find_if(std::begin(invalid_object_can), std::end(invalid_object_can), [id](const invalid_object& item) {return id == item.object_ptr->id();});
+		return iter == std::end(invalid_object_can) ? object_type() : iter->object_ptr;
 	}
 
 	//this method has linear complexity, please note.
 	object_type invalid_object_pop(uint_fast64_t id)
 	{
 		boost::shared_lock<boost::shared_mutex> lock(invalid_object_can_mutex);
-		for (auto iter = std::begin(invalid_object_can); iter != std::end(invalid_object_can); ++iter)
-			if (id == iter->object_ptr->id())
-			{
-				auto object_ptr = iter->object_ptr;
-				invalid_object_can.erase(iter);
-				return object_ptr;
-			}
+		auto iter = std::find_if(std::begin(invalid_object_can), std::end(invalid_object_can), [id](const invalid_object& item) {return id == item.object_ptr->id();});
+		if (iter != std::end(invalid_object_can))
+		{
+			auto object_ptr = iter->object_ptr;
+			invalid_object_can.erase(iter);
+			return object_ptr;
+		}
 		return object_type();
 	}
 

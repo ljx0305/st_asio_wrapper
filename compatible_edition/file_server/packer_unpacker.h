@@ -1,8 +1,7 @@
 #ifndef PACKER_UNPACKER_H_
 #define PACKER_UNPACKER_H_
 
-#include "../include/st_asio_wrapper_packer.h"
-#include "../include/st_asio_wrapper_unpacker.h"
+#include "../include/st_asio_wrapper_base.h"
 using namespace st_asio_wrapper;
 
 #ifdef _MSC_VER
@@ -103,7 +102,7 @@ public:
 		}
 
 		if (0 == _data_len)
-			msg_can.resize(msg_can.size() + 1);
+			msg_can.emplace_back();
 
 		return true;
 	}

@@ -1,4 +1,4 @@
-
+﻿
 #ifndef ST_ASIO_SERVICE_THREAD_NUM
 #define ST_ASIO_SERVICE_THREAD_NUM 8
 同时开启多少个线程执行boost::asio::io_service::run函数。
@@ -7,7 +7,7 @@
 namespace st_asio_wrapper
 {
 
-对io_service的包装，用于启动st_asio_wrapper里面的service（实现了i_service的所有对象）。
+包装io_service，用于启动st_asio_wrapper里面的service（实现了i_service的所有对象）。
 class st_service_pump : public boost::asio::io_service
 {
 public:

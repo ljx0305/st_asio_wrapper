@@ -32,7 +32,7 @@ public:
 
 protected:
 	virtual bool init() {ST_THIS reset(); ST_THIS start(); return Socket::started();}
-	virtual void uninit() {ST_THIS graceful_close();}
+	virtual void uninit() {ST_THIS graceful_shutdown();}
 };
 
 template<typename Socket, typename Pool>
@@ -48,8 +48,7 @@ protected:
 
 	virtual bool init()
 	{
-		ST_THIS do_something_to_all(boost::mem_fn(&Socket::reset));
-		ST_THIS do_something_to_all(boost::mem_fn(&Socket::start));
+		ST_THIS do_something_to_all((boost::lambda::bind(&Socket::reset, *boost::lambda::_1), boost::lambda::bind(&Socket::start, *boost::lambda::_1)));
 		ST_THIS start();
 		return true;
 	}
@@ -73,7 +72,7 @@ public:
 		return false;
 	}
 
-	//unseal object creation for client endpoint object pool.
+	//unseal object creation.
 	using Pool::create_object;
 };
 

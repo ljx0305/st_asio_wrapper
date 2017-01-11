@@ -13,8 +13,6 @@
 #ifndef ST_ASIO_WRAPPER_SERVICE_PUMP_H_
 #define ST_ASIO_WRAPPER_SERVICE_PUMP_H_
 
-#include <boost/container/list.hpp>
-
 #include "st_asio_wrapper_base.h"
 
 //IO thread number
@@ -35,7 +33,7 @@ public:
 	class i_service
 	{
 	protected:
-		i_service(st_service_pump& service_pump_) : service_pump(service_pump_), started(false), id_(0), data(NULL) {service_pump_.add(this);}
+		i_service(st_service_pump& service_pump_) : sp(service_pump_), started(false), id_(0), data(NULL) {service_pump_.add(this);}
 		virtual ~i_service() {}
 
 	public:
@@ -51,15 +49,15 @@ public:
 		void user_data(void* data_) {data = data_;}
 		void* user_data() const {return data;}
 
-		st_service_pump& get_service_pump() {return service_pump;}
-		const st_service_pump& get_service_pump() const {return service_pump;}
+		st_service_pump& get_service_pump() {return sp;}
+		const st_service_pump& get_service_pump() const {return sp;}
 
 	protected:
 		virtual bool init() = 0;
 		virtual void uninit() = 0;
 
 	protected:
-		st_service_pump& service_pump;
+		st_service_pump& sp;
 
 	private:
 		bool started;
@@ -186,7 +184,7 @@ protected:
 #ifdef ST_ASIO_ENHANCED_STABILITY
 	virtual bool on_exception(const std::exception& e)
 	{
-		unified_out::info_out("service pump exception: %s.", e.what());
+		unified_out::error_out("service pump exception: %s.", e.what());
 		return true; //continue this io_service::run, if needed, rewrite this to decide whether to continue or not
 	}
 
@@ -209,7 +207,7 @@ private:
 		assert(NULL != i_service_);
 
 		boost::unique_lock<boost::shared_mutex> lock(service_can_mutex);
-		service_can.push_back(i_service_);
+		service_can.emplace_back(i_service_);
 	}
 
 protected:

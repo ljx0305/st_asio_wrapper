@@ -1,5 +1,5 @@
 /*
- * st_asio_wrapper_verification.h
+ * st_asio_wrapper.h
  *
  *  Created on: 2012-10-21
  *      Author: youngwolf
@@ -12,25 +12,19 @@
  * license: www.boost.org/LICENSE_1_0.txt
  *
  * change log:
- * 2012.7.7
- * Created
- *
- * 2012.7.7 - 2016.7.7
- * Beta edition
- *
- * 2016.7.7		version 1.0.0
- * First release
+ * See st_asio_wrapper.h in standard edition.
  *
  */
 
 #ifndef ST_ASIO_WRAPPER_H_
 #define ST_ASIO_WRAPPER_H_
 
-#define ST_ASIO_WRAPPER_VERSION 10000 //[x]xxxxx -> [x]x.xx.xx
+#define ST_ASIO_WRAPPER_VER		10305	//[x]xyyzz -> [x]x.[y]y.[z]z
+#define ST_ASIO_WRAPPER_VERSION	"1.3.5"
 
 #ifdef _MSC_VER
 	#if _MSC_VER >= 1600
-		#warning Your compiler is Visual C++ 10.0 or higher, you can use the standard edition to gain some performance improvement.
+		#pragma message("Your compiler is Visual C++ 10.0 or higher, you can use the standard edition to gain some performance improvement.")
 	#endif
 #elif defined(__GNUC__)
 	//After a roughly reading from gcc.gnu.org and clang.llvm.org, I believed that the minimum version of GCC and Clang that support c++0x
@@ -49,6 +43,10 @@
 	#endif
 #else
 	#error st_asio_wrapper only support Visual C++, GCC and Clang.
+#endif
+
+#if BOOST_VERSION < 104900
+	#error st_asio_wrapper only support boost 1.49 or higher.
 #endif
 
 #endif /* ST_ASIO_WRAPPER_H_ */

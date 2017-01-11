@@ -3,14 +3,17 @@
 #define FILE_CLIENT_H_
 
 #include <boost/timer/timer.hpp>
-#include <boost/lambda/bind.hpp>
-#include <boost/lambda/lambda.hpp>
 
 #include "../file_server/packer_unpacker.h"
-#include "../include/st_asio_wrapper_tcp_client.h"
+#include "../include/ext/st_asio_wrapper_client.h"
 using namespace st_asio_wrapper;
+using namespace st_asio_wrapper::ext;
 
+#if BOOST_VERSION >= 105300
 extern boost::atomic_ushort completed_client_num;
+#else
+extern st_atomic<unsigned short> completed_client_num;
+#endif
 extern int link_num;
 extern fl_type file_size;
 
@@ -37,20 +40,16 @@ public:
 
 		if (TRANS_IDLE != state)
 			return false;
-		else if (NULL == file)
-		{
-			if (0 == id())
-				file = fopen(file_name.data(), "w+b");
-			else
-				file = fopen(file_name.data(), "r+b");
 
-			if (NULL == file)
-			{
-				printf("can't create file %s.\n", file_name.data());
-				return false;
-			}
-			else if (0 == id())
-				return true;
+		if (0 == id())
+			file = fopen(file_name.data(), "w+b");
+		else
+			file = fopen(file_name.data(), "r+b");
+
+		if (NULL == file)
+		{
+			printf("can't create file %s.\n", file_name.data());
+			return false;
 		}
 
 		std::string order("\0", ORDER_LEN);
@@ -75,10 +74,11 @@ public:
 protected:
 	//msg handling
 #ifndef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
-	//we can handle msg very fast, so we don't use recv buffer
+	//we always handle messages in on_msg(), so we don't care the type of input queue and input container at all.
 	virtual bool on_msg(out_msg_type& msg) {handle_msg(msg); return true;}
 #endif
-	//we will change unpacker at runtime, this operation can only be done in on_msg(), reset() or constructor
+	//we will change unpacker at runtime, this operation can only be done in on_msg(), reset() or constructor,
+	//so we must guarantee all messages to be handled in on_msg()
 	//virtual bool on_msg_handle(out_msg_type& msg, bool link_down) {handle_msg(msg); return true;}
 	//msg handling end
 
@@ -167,9 +167,9 @@ private:
 class file_client : public st_tcp_client_base<file_socket>
 {
 public:
-	static const unsigned char TIMER_BEGIN = st_tcp_client_base<file_socket>::TIMER_END;
-	static const unsigned char UPDATE_PROGRESS = TIMER_BEGIN;
-	static const unsigned char TIMER_END = TIMER_BEGIN + 10;
+	static const tid TIMER_BEGIN = st_tcp_client_base<file_socket>::TIMER_END;
+	static const tid UPDATE_PROGRESS = TIMER_BEGIN;
+	static const tid TIMER_END = TIMER_BEGIN + 10;
 
 	file_client(st_service_pump& service_pump_) : st_tcp_client_base<file_socket>(service_pump_) {}
 
@@ -183,7 +183,7 @@ public:
 	{
 		stop_timer(UPDATE_PROGRESS);
 
-		double used_time = (double) (begin_time.elapsed().wall / 1000000) / 1000;
+		double used_time = (double) begin_time.elapsed().wall / 1000000000;
 		printf("\r100%%\ntransfer %s end, speed: %.0f kB/s.\n", file_name.data(), file_size / used_time / 1024);
 	}
 
@@ -191,13 +191,13 @@ public:
 	{
 		fl_type total_rest_size = 0;
 		do_something_to_all(total_rest_size += *boost::lambda::_1);
-//		do_something_to_all(total_rest_size += boost::lambda::bind(&file_socket::get_rest_size, &*boost::lambda::_1));
+//		do_something_to_all(total_rest_size += boost::lambda::bind(&file_socket::get_rest_size, *boost::lambda::_1));
 
 		return total_rest_size;
 	}
 
 private:
-	bool update_progress_handler(unsigned char id, unsigned last_percent)
+	bool update_progress_handler(tid id, unsigned last_percent)
 	{
 		assert(UPDATE_PROGRESS == id);
 

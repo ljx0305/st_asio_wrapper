@@ -1,18 +1,24 @@
 
+#include <iostream>
+
 //configuration
-//#define ST_ASIO_DEFAULT_PACKER replaceable_packer
-//#define ST_ASIO_DEFAULT_UDP_UNPACKER replaceable_udp_unpacker
+#define ST_ASIO_DELAY_CLOSE		1 //this demo not used object pool and doesn't need life cycle management,
+								  //so, define this to avoid hooks for async call (and slightly improve efficiency),
+								  //any value which is bigger than zero is okay.
+//#define ST_ASIO_DEFAULT_PACKER replaceable_packer<>
+//#define ST_ASIO_DEFAULT_UDP_UNPACKER replaceable_udp_unpacker<>
 //configuration
 
-#include "../include/st_asio_wrapper_udp_client.h"
+#include "../include/ext/st_asio_wrapper_udp.h"
 using namespace st_asio_wrapper;
+using namespace st_asio_wrapper::ext;
 
 #define QUIT_COMMAND	"quit"
 #define RESTART_COMMAND	"restart"
 
 int main(int argc, const char* argv[])
 {
-	puts("usage: udp_test <my port> <peer port> [peer ip=127.0.0.1]");
+	printf("usage: %s <my port> <peer port> [peer ip=127.0.0.1]\n", argv[0]);
 	if (argc >= 2 && (0 == strcmp(argv[1], "--help") || 0 == strcmp(argv[1], "-h")))
 		return 0;
 	else if (argc < 3)
@@ -26,20 +32,20 @@ int main(int argc, const char* argv[])
 	assert(!ec);
 
 	std::string str;
-	st_service_pump service_pump;
-	st_udp_sclient client(service_pump);
+	st_service_pump sp;
+	st_udp_sclient client(sp);
 	client.set_local_addr(local_port);
 
-	service_pump.start_service();
-	while(service_pump.is_running())
+	sp.start_service();
+	while(sp.is_running())
 	{
 		std::cin >> str;
 		if (QUIT_COMMAND == str)
-			service_pump.stop_service();
+			sp.stop_service();
 		else if (RESTART_COMMAND == str)
 		{
-			service_pump.stop_service();
-			service_pump.start_service();
+			sp.stop_service();
+			sp.start_service();
 		}
 		else
 			client.safe_send_native_msg(peer_addr, str);
@@ -47,8 +53,3 @@ int main(int argc, const char* argv[])
 
 	return 0;
 }
-
-//restore configuration
-#undef ST_ASIO_DEFAULT_PACKER
-#undef ST_ASIO_DEFAULT_UNPACKER
-//restore configuration

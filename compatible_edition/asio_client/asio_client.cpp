@@ -1,9 +1,15 @@
 
+#include <iostream>
+
 //configuration
 #define ST_ASIO_SERVER_PORT		9528
+#define ST_ASIO_DELAY_CLOSE		1 //this demo not used object pool and doesn't need life cycle management,
+								  //so, define this to avoid hooks for async call (and slightly improve efficiency),
+								  //any value which is bigger than zero is okay.
 #define ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER //force to use the msg recv buffer
 #define ST_ASIO_CUSTOM_LOG
-#define ST_ASIO_DEFAULT_UNPACKER unbuffered_unpacker
+#define ST_ASIO_DEFAULT_UNPACKER non_copy_unpacker
+//#define ST_ASIO_DEFAULT_UNPACKER stream_unpacker
 
 //the following three macros demonstrate how to support huge msg(exceed 65535 - 2).
 //huge msg will consume huge memory, for example, if we want to support 1M msg size, because every st_tcp_socket has a
@@ -36,7 +42,8 @@ public:
 	static void debug_out(const char* fmt, ...) {all_out_helper2("debug");}
 };
 
-#include "../include/st_asio_wrapper_tcp_client.h"
+#include "../include/ext/st_asio_wrapper_client.h"
+using namespace st_asio_wrapper::ext;
 
 #define QUIT_COMMAND	"quit"
 #define RESTART_COMMAND	"restart"
@@ -46,15 +53,14 @@ public:
 
 int main(int argc, const char* argv[])
 {
-	printf("usage: asio_client [<port=%d> [ip=%s]]\n", ST_ASIO_SERVER_PORT + 100, ST_ASIO_SERVER_IP);
+	printf("usage: %s [<port=%d> [ip=%s]]\n", argv[0], ST_ASIO_SERVER_PORT + 100, ST_ASIO_SERVER_IP);
 	if (argc >= 2 && (0 == strcmp(argv[1], "--help") || 0 == strcmp(argv[1], "-h")))
 		return 0;
 	else
 		puts("type " QUIT_COMMAND " to end.");
 
-	st_service_pump service_pump;
-	st_tcp_sclient client(service_pump);
-	//there is no corresponding echo client, because echo server with echo client will cause dead loop, and occupy almost all the network resource
+	st_service_pump sp;
+	st_tcp_sclient client(sp);
 
 //	argv[2] = "::1" //ipv6
 //	argv[2] = "127.0.0.1" //ipv4
@@ -65,20 +71,20 @@ int main(int argc, const char* argv[])
 	else
 		client.set_server_addr(ST_ASIO_SERVER_PORT + 100, ST_ASIO_SERVER_IP);
 
-	service_pump.start_service();
-	while(service_pump.is_running())
+	sp.start_service();
+	while(sp.is_running())
 	{
 		std::string str;
 		std::cin >> str;
 		if (QUIT_COMMAND == str)
-			service_pump.stop_service();
+			sp.stop_service();
 		else if (RESTART_COMMAND == str)
 		{
-			service_pump.stop_service();
-			service_pump.start_service();
+			sp.stop_service();
+			sp.start_service();
 		}
 		else if (RECONNECT_COMMAND == str)
-			client.graceful_close(true);
+			client.graceful_shutdown(true);
 		//the following two commands demonstrate how to suspend msg sending, no matter recv buffer been used or not
 		else if (SUSPEND_COMMAND == str)
 			client.suspend_send_msg(true);
@@ -90,14 +96,3 @@ int main(int argc, const char* argv[])
 
 	return 0;
 }
-
-//restore configuration
-#undef ST_ASIO_SERVER_PORT
-#undef ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER
-#undef ST_ASIO_CUSTOM_LOG
-#undef ST_ASIO_DEFAULT_UNPACKER
-
-//#undef ST_ASIO_HUGE_MSG
-//#undef ST_ASIO_MAX_MSG_LEN
-//#undef ST_ASIO_MAX_MSG_NUM
-//restore configuration

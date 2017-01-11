@@ -1,10 +1,16 @@
 
 //configuration
 #define ST_ASIO_SERVER_PORT		5051
-#define ST_ASIO_CLEAR_OBJECT_INTERVAL	60
+#define ST_ASIO_CLEAR_OBJECT_INTERVAL 60
 #define ST_ASIO_ENHANCED_STABILITY
 #define ST_ASIO_WANT_MSG_SEND_NOTIFY
-#define ST_ASIO_DEFAULT_PACKER	replaceable_packer
+#define ST_ASIO_INPUT_QUEUE non_lock_queue
+//file_server / file_client is a responsive system, before file_server send each message (except talking message,
+//but file_server only receive talking message, not send talking message proactively), the previous message has been
+//sent to file_client, so sending buffer will always be empty, which means we will never operate sending buffer concurrently,
+//so need no locks.
+#define ST_ASIO_HEARTBEAT_INTERVAL	5
+#define ST_ASIO_DEFAULT_PACKER	replaceable_packer<>
 //configuration
 
 #include "file_socket.h"
@@ -25,7 +31,7 @@ bool file_socket::on_msg_handle(out_msg_type& msg, bool link_down) {handle_msg(m
 #ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
 void file_socket::on_msg_send(in_msg_type& msg)
 {
-	BOOST_AUTO(buffer, boost::dynamic_pointer_cast<file_buffer>(msg.raw_buffer()));
+	BOOST_AUTO(buffer, dynamic_cast<file_buffer*>(msg.raw_buffer()));
 	if (NULL != buffer)
 	{
 		buffer->read();
@@ -93,7 +99,8 @@ void file_socket::handle_msg(out_msg_ctype& msg)
 			{
 				state = TRANS_BUSY;
 				fseeko(file, offset, SEEK_SET);
-				direct_send_msg(replaceable_buffer(boost::make_shared<file_buffer>(file, length)), true);
+				in_msg_type msg(new file_buffer(file, length));
+				direct_send_msg(msg, true);
 			}
 		}
 		break;
@@ -104,11 +111,3 @@ void file_socket::handle_msg(out_msg_ctype& msg)
 		break;
 	}
 }
-
-//restore configuration
-#undef ST_ASIO_SERVER_PORT
-#undef ST_ASIO_CLEAR_OBJECT_INTERVAL
-#undef ST_ASIO_ENHANCED_STABILITY
-#undef ST_ASIO_WANT_MSG_SEND_NOTIFY
-#undef ST_ASIO_DEFAULT_PACKER
-//restore configuration

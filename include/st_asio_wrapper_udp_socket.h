@@ -13,10 +13,8 @@
 #ifndef ST_ASIO_WRAPPER_UDP_SOCKET_H_
 #define ST_ASIO_WRAPPER_UDP_SOCKET_H_
 
-#include <boost/array.hpp>
-
 #include "st_asio_wrapper_socket.h"
-#include "st_asio_wrapper_unpacker.h"
+#include "st_asio_wrapper_container.h"
 
 //in set_local_addr, if the IP is empty, ST_ASIO_UDP_DEFAULT_IP_VERSION will define the IP version,
 //or, the IP version will be deduced by the IP address.
@@ -25,18 +23,17 @@
 #define ST_ASIO_UDP_DEFAULT_IP_VERSION boost::asio::ip::udp::v4()
 #endif
 
-#ifndef ST_ASIO_DEFAULT_UDP_UNPACKER
-#define ST_ASIO_DEFAULT_UDP_UNPACKER udp_unpacker
-#endif
-
 namespace st_asio_wrapper
 {
-namespace st_udp
-{
 
-template <typename Packer = ST_ASIO_DEFAULT_PACKER, typename Unpacker = ST_ASIO_DEFAULT_UDP_UNPACKER, typename Socket = boost::asio::ip::udp::socket>
-class st_udp_socket_base : public st_socket<Socket, Packer, Unpacker, udp_msg<typename Packer::msg_type>, udp_msg<typename Unpacker::msg_type>>
+template <typename Packer, typename Unpacker, typename Socket = boost::asio::ip::udp::socket,
+	template<typename, typename> class InQueue = ST_ASIO_INPUT_QUEUE, template<typename> class InContainer = ST_ASIO_INPUT_CONTAINER,
+	template<typename, typename> class OutQueue = ST_ASIO_OUTPUT_QUEUE, template<typename> class OutContainer = ST_ASIO_OUTPUT_CONTAINER>
+class st_udp_socket_base : public st_socket<Socket, Packer, Unpacker, udp_msg<typename Packer::msg_type>, udp_msg<typename Unpacker::msg_type>, InQueue, InContainer, OutQueue, OutContainer>
 {
+protected:
+	typedef st_socket<Socket, Packer, Unpacker, udp_msg<typename Packer::msg_type>, udp_msg<typename Unpacker::msg_type>, InQueue, InContainer, OutQueue, OutContainer> super;
+
 public:
 	typedef udp_msg<typename Packer::msg_type> in_msg_type;
 	typedef const in_msg_type in_msg_ctype;
@@ -44,10 +41,10 @@ public:
 	typedef const out_msg_type out_msg_ctype;
 
 public:
-	using st_socket<Socket, Packer, Unpacker, udp_msg<typename Packer::msg_type>, udp_msg<typename Unpacker::msg_type>>::TIMER_BEGIN;
-	using st_socket<Socket, Packer, Unpacker, udp_msg<typename Packer::msg_type>, udp_msg<typename Unpacker::msg_type>>::TIMER_END;
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
 
-	st_udp_socket_base(boost::asio::io_service& io_service_) : st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>(io_service_), unpacker_(boost::make_shared<Unpacker>()) {}
+	st_udp_socket_base(boost::asio::io_service& io_service_) : super(io_service_), unpacker_(boost::make_shared<Unpacker>()) {}
 
 	//reset all, be ensure that there's no any operations performed on this st_udp_socket when invoke it
 	//please note, when reuse this st_udp_socket, st_object_pool will invoke reset(), child must re-write this to initialize
@@ -56,7 +53,7 @@ public:
 	virtual void reset()
 	{
 		reset_state();
-		st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::reset();
+		super::reset();
 
 		boost::system::error_code ec;
 		ST_THIS lowest_layer().open(local_addr.protocol(), ec); assert(!ec);
@@ -71,7 +68,7 @@ public:
 	void reset_state()
 	{
 		unpacker_->reset_state();
-		st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::reset_state();
+		super::reset_state();
 	}
 
 	bool set_local_addr(unsigned short port, const std::string& ip = std::string())
@@ -92,18 +89,18 @@ public:
 	}
 	const boost::asio::ip::udp::endpoint& get_local_addr() const {return local_addr;}
 
-	void disconnect() {force_close();}
-	void force_close() {show_info("link:", "been closed."); do_close();}
-	void graceful_close() {force_close();}
+	void disconnect() {force_shutdown();}
+	void force_shutdown() {show_info("link:", "been shut down."); shutdown();}
+	void graceful_shutdown() {force_shutdown();}
 
 	//get or change the unpacker at runtime
 	//changing unpacker at runtime is not thread-safe, this operation can only be done in on_msg(), reset() or constructor, please pay special attention
 	//we can resolve this defect via mutex, but i think it's not worth, because this feature is not frequently used
-	boost::shared_ptr<i_udp_unpacker<typename Packer::msg_type>> inner_unpacker() {return unpacker_;}
-	boost::shared_ptr<const i_udp_unpacker<typename Packer::msg_type>> inner_unpacker() const {return unpacker_;}
-	void inner_unpacker(const boost::shared_ptr<i_udp_unpacker<typename Packer::msg_type>>& _unpacker_) {unpacker_ = _unpacker_;}
+	boost::shared_ptr<i_udp_unpacker<typename Unpacker::msg_type>> inner_unpacker() {return unpacker_;}
+	boost::shared_ptr<const i_udp_unpacker<typename Unpacker::msg_type>> inner_unpacker() const {return unpacker_;}
+	void inner_unpacker(const boost::shared_ptr<i_udp_unpacker<typename Unpacker::msg_type>>& _unpacker_) {unpacker_ = _unpacker_;}
 
-	using st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::send_msg;
+	using super::send_msg;
 	///////////////////////////////////////////////////
 	//msg sending interface
 	UDP_SEND_MSG(send_msg, false) //use the packer with native = false to pack the msgs
@@ -112,13 +109,10 @@ public:
 	//success at here just means put the msg into st_udp_socket's send buffer
 	UDP_SAFE_SEND_MSG(safe_send_msg, send_msg)
 	UDP_SAFE_SEND_MSG(safe_send_native_msg, send_native_msg)
-	//like safe_send_msg and safe_send_native_msg, but non-block
-	UDP_POST_MSG(post_msg, false)
-	UDP_POST_MSG(post_native_msg, true)
 	//msg sending interface
 	///////////////////////////////////////////////////
 
-	void show_info(const char* head, const char* tail) const {unified_out::info_out("%s %s:%hu %s", head, local_addr.address().to_string().c_str(), local_addr.port(), tail);}
+	void show_info(const char* head, const char* tail) const {unified_out::info_out("%s %s:%hu %s", head, local_addr.address().to_string().data(), local_addr.port(), tail);}
 
 protected:
 	virtual bool do_start()
@@ -132,23 +126,23 @@ protected:
 		return false;
 	}
 
-	//must mutex send_msg_buffer before invoke this function
+	//ascs::socket will guarantee not call this function in more than one thread concurrently.
+	//return false if send buffer is empty or sending not allowed or io_service stopped
 	virtual bool do_send_msg()
 	{
-		if (!is_send_allowed() || ST_THIS stopped())
-			ST_THIS sending = false;
-		else if (!ST_THIS sending && !ST_THIS send_msg_buffer.empty())
+		if (!ST_THIS send_msg_buffer.empty() && is_send_allowed() && ST_THIS send_msg_buffer.try_dequeue(last_send_msg))
 		{
-			ST_THIS sending = true;
-			ST_THIS last_send_msg.swap(ST_THIS send_msg_buffer.front());
-			ST_THIS send_msg_buffer.pop_front();
+			ST_THIS stat.send_delay_sum += statistic::local_time() - last_send_msg.begin_time;
 
-			boost::shared_lock<boost::shared_mutex> lock(close_mutex);
-			ST_THIS next_layer().async_send_to(boost::asio::buffer(ST_THIS last_send_msg.data(), ST_THIS last_send_msg.size()), ST_THIS last_send_msg.peer_addr,
-				ST_THIS make_handler_error_size(boost::bind(&st_udp_socket_base::send_handler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
+			last_send_msg.restart();
+			boost::shared_lock<boost::shared_mutex> lock(shutdown_mutex);
+			ST_THIS next_layer().async_send_to(boost::asio::buffer(last_send_msg.data(), last_send_msg.size()), last_send_msg.peer_addr,
+				ST_THIS make_handler_error_size([this](const boost::system::error_code& ec, size_t bytes_transferred) {ST_THIS send_handler(ec, bytes_transferred);}));
+
+			return true;
 		}
 
-		return ST_THIS sending;
+		return false;
 	}
 
 	virtual void do_recv_msg()
@@ -156,12 +150,12 @@ protected:
 		auto recv_buff = unpacker_->prepare_next_recv();
 		assert(boost::asio::buffer_size(recv_buff) > 0);
 
-		boost::shared_lock<boost::shared_mutex> lock(close_mutex);
+		boost::shared_lock<boost::shared_mutex> lock(shutdown_mutex);
 		ST_THIS next_layer().async_receive_from(recv_buff, peer_addr,
-			ST_THIS make_handler_error_size(boost::bind(&st_udp_socket_base::recv_handler, this, boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred)));
+			ST_THIS make_handler_error_size([this](const boost::system::error_code& ec, size_t bytes_transferred) {ST_THIS recv_handler(ec, bytes_transferred);}));
 	}
 
-	virtual bool is_send_allowed() const {return ST_THIS lowest_layer().is_open() && st_socket<Socket, Packer, Unpacker, in_msg_type, out_msg_type>::is_send_allowed();}
+	virtual bool is_send_allowed() {return ST_THIS lowest_layer().is_open() && super::is_send_allowed();}
 	//can send data or not(just put into send buffer)
 
 	virtual void on_recv_error(const boost::system::error_code& ec)
@@ -176,18 +170,17 @@ protected:
 
 	virtual bool on_msg_handle(out_msg_type& msg, bool link_down) {unified_out::debug_out("recv(" ST_ASIO_SF "): %s", msg.size(), msg.data()); return true;}
 
-	void do_close()
+	void shutdown()
 	{
+		boost::unique_lock<boost::shared_mutex> lock(shutdown_mutex);
+
 		ST_THIS stop_all_timer();
-		ST_THIS started_ = false;
-//		ST_THIS reset_state();
+		ST_THIS close();
 
 		if (ST_THIS lowest_layer().is_open())
 		{
 			boost::system::error_code ec;
 			ST_THIS lowest_layer().shutdown(boost::asio::ip::udp::socket::shutdown_both, ec);
-
-			boost::unique_lock<boost::shared_mutex> lock(close_mutex);
 			ST_THIS lowest_layer().close(ec);
 		}
 	}
@@ -197,9 +190,11 @@ private:
 	{
 		if (!ec && bytes_transferred > 0)
 		{
-			ST_THIS temp_msg_buffer.resize(ST_THIS temp_msg_buffer.size() + 1);
+			++ST_THIS stat.recv_msg_sum;
+			ST_THIS stat.recv_byte_sum += bytes_transferred;
+			ST_THIS temp_msg_buffer.emplace_back();
 			ST_THIS temp_msg_buffer.back().swap(peer_addr, unpacker_->parse_msg(bytes_transferred));
-			ST_THIS dispatch_msg();
+			ST_THIS handle_msg();
 		}
 #ifdef _MSC_VER
 		else if (boost::asio::error::connection_refused == ec || boost::asio::error::connection_reset == ec)
@@ -213,42 +208,42 @@ private:
 	{
 		if (!ec)
 		{
-			assert(bytes_transferred == ST_THIS last_send_msg.size());
+			assert(bytes_transferred == last_send_msg.size());
+
+			ST_THIS stat.send_time_sum += statistic::local_time() - last_send_msg.begin_time;
+			ST_THIS stat.send_byte_sum += bytes_transferred;
+			++ST_THIS stat.send_msg_sum;
 #ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
-			ST_THIS on_msg_send(ST_THIS last_send_msg);
+			ST_THIS on_msg_send(last_send_msg);
+#endif
+#ifdef ST_ASIO_WANT_ALL_MSG_SEND_NOTIFY
+			if (ST_THIS send_msg_buffer.empty())
+				ST_THIS on_all_msg_send(last_send_msg);
 #endif
 		}
 		else
 			ST_THIS on_send_error(ec);
+		last_send_msg.clear();
 
-		boost::unique_lock<boost::shared_mutex> lock(ST_THIS send_msg_buffer_mutex);
-		ST_THIS sending = false;
-
-		//send msg sequentially, that means second send only after first send success
-		//under windows, send a msg to addr_any may cause sending errors, please note
-		//for UDP in st_asio_wrapper, sending error will not stop the following sending.
-#ifdef ST_ASIO_WANT_ALL_MSG_SEND_NOTIFY
+		//send msg sequentially, which means second sending only after first sending success
+		//on windows, sending a msg to addr_any may cause errors, please note
+		//for UDP, sending error will not stop subsequence sendings.
 		if (!do_send_msg())
-			ST_THIS on_all_msg_send(ST_THIS last_send_msg);
-#else
-		do_send_msg();
-#endif
-
-		if (!ST_THIS sending)
-			ST_THIS last_send_msg.clear();
+		{
+			ST_THIS sending = false;
+			if (!ST_THIS send_msg_buffer.empty())
+				ST_THIS send_msg(); //just make sure no pending msgs
+		}
 	}
 
 protected:
-	boost::shared_ptr<i_udp_unpacker<typename Packer::msg_type>> unpacker_;
+	typename super::in_msg last_send_msg;
+	boost::shared_ptr<i_udp_unpacker<typename Unpacker::msg_type>> unpacker_;
 	boost::asio::ip::udp::endpoint peer_addr, local_addr;
 
-	boost::shared_mutex close_mutex;
+	boost::shared_mutex shutdown_mutex;
 };
-typedef st_udp_socket_base<> st_udp_socket;
 
-} //namespace st_udp
-} //namespace st_asio_wrapper
-
-using namespace st_asio_wrapper::st_udp; //compatible with old version which doesn't have st_udp namespace.
+} //namespace
 
 #endif /* ST_ASIO_WRAPPER_UDP_SOCKET_H_ */

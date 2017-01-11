@@ -32,7 +32,7 @@ public:
 
 protected:
 	virtual bool init() {ST_THIS reset(); ST_THIS start(); return Socket::started();}
-	virtual void uninit() {ST_THIS graceful_close();}
+	virtual void uninit() {ST_THIS graceful_shutdown();}
 };
 
 template<typename Socket, typename Pool>
@@ -72,7 +72,7 @@ public:
 		return false;
 	}
 
-	//unseal object creation for client endpoint object pool.
+	//unseal object creation.
 	using Pool::create_object;
 };
 

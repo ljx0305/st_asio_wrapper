@@ -7,13 +7,13 @@
  *		QQ: 676218192
  *		Community on QQ: 198941541
  *
- * packer base class
+ * packers
  */
 
-#ifndef ST_ASIO_WRAPPER_PACKER_H_
-#define ST_ASIO_WRAPPER_PACKER_H_
+#ifndef ST_ASIO_WRAPPER_EXT_PACKER_H_
+#define ST_ASIO_WRAPPER_EXT_PACKER_H_
 
-#include "st_asio_wrapper_base.h"
+#include "st_asio_wrapper_ext.h"
 
 #ifdef ST_ASIO_HUGE_MSG
 #define ST_ASIO_HEAD_TYPE	uint32_t
@@ -24,8 +24,7 @@
 #endif
 #define ST_ASIO_HEAD_LEN	(sizeof(ST_ASIO_HEAD_TYPE))
 
-namespace st_asio_wrapper
-{
+namespace st_asio_wrapper { namespace ext {
 
 class packer_helper
 {
@@ -54,27 +53,7 @@ public:
 	}
 };
 
-template<typename MsgType>
-class i_packer
-{
-public:
-	typedef MsgType msg_type;
-	typedef const msg_type msg_ctype;
-
-protected:
-	virtual ~i_packer() {}
-
-public:
-	virtual void reset_state() {}
-	virtual msg_type pack_msg(const char* const pstr[], const size_t len[], size_t num, bool native = false) = 0;
-	virtual char* raw_data(msg_type& msg) const {return nullptr;}
-	virtual const char* raw_data(msg_ctype& msg) const {return nullptr;}
-	virtual size_t raw_data_len(msg_ctype& msg) const {return 0;}
-
-	msg_type pack_msg(const char* pstr, size_t len, bool native = false) {return pack_msg(&pstr, &len, 1, native);}
-	msg_type pack_msg(const std::string& str, bool native = false) {return pack_msg(str.data(), str.size(), native);}
-};
-
+//protocol: length + body
 class packer : public i_packer<std::string>
 {
 public:
@@ -119,25 +98,42 @@ public:
 	virtual size_t raw_data_len(msg_ctype& msg) const {return msg.size() - ST_ASIO_HEAD_LEN;}
 };
 
-class replaceable_packer : public i_packer<replaceable_buffer>
+//protocol: length + body
+//T can be replaceable_buffer (an alias of auto_buffer) or shared_buffer, the latter makes output messages seemingly copyable.
+template<typename T = replaceable_buffer>
+class replaceable_packer : public i_packer<T>
 {
-public:
-	using i_packer<msg_type>::pack_msg;
-	virtual msg_type pack_msg(const char* const pstr[], const size_t len[], size_t num, bool native = false)
-	{
-		packer p;
-		auto msg = p.pack_msg(pstr, len, num, native);
-		auto com = boost::make_shared<buffer>();
-		com->swap(msg);
+protected:
+	typedef i_packer<T> super;
 
-		return msg_type(com);
+public:
+	using super::pack_msg;
+	virtual typename super::msg_type pack_msg(const char* const pstr[], const size_t len[], size_t num, bool native = false)
+	{
+		auto raw_msg = new string_buffer();
+		auto str = packer().pack_msg(pstr, len, num, native);
+		raw_msg->swap(str);
+		return typename super::msg_type(raw_msg);
 	}
 
-	virtual char* raw_data(msg_type& msg) const {return const_cast<char*>(std::next(msg.data(), ST_ASIO_HEAD_LEN));}
-	virtual const char* raw_data(msg_ctype& msg) const {return std::next(msg.data(), ST_ASIO_HEAD_LEN);}
-	virtual size_t raw_data_len(msg_ctype& msg) const {return msg.size() - ST_ASIO_HEAD_LEN;}
+	virtual char* raw_data(typename super::msg_type& msg) const {return const_cast<char*>(std::next(msg.data(), ST_ASIO_HEAD_LEN));}
+	virtual const char* raw_data(typename super::msg_ctype& msg) const {return std::next(msg.data(), ST_ASIO_HEAD_LEN);}
+	virtual size_t raw_data_len(typename super::msg_ctype& msg) const {return msg.size() - ST_ASIO_HEAD_LEN;}
 };
 
+//protocol: fixed length
+class fixed_length_packer : public packer
+{
+public:
+	using packer::pack_msg;
+	virtual msg_type pack_msg(const char* const pstr[], const size_t len[], size_t num, bool native = false) {return packer::pack_msg(pstr, len, num, true);}
+
+	virtual char* raw_data(msg_type& msg) const {return const_cast<char*>(msg.data());}
+	virtual const char* raw_data(msg_ctype& msg) const {return msg.data();}
+	virtual size_t raw_data_len(msg_ctype& msg) const {return msg.size();}
+};
+
+//protocol: [prefix] + body + suffix
 class prefix_suffix_packer : public i_packer<std::string>
 {
 public:
@@ -169,14 +165,14 @@ public:
 		return msg;
 	}
 
-	virtual char* raw_data(msg_type& msg) const {return const_cast<char*>(msg.data());}
-	virtual const char* raw_data(msg_ctype& msg) const {return msg.data();}
-	virtual size_t raw_data_len(msg_ctype& msg) const {return msg.size();}
+	virtual char* raw_data(msg_type& msg) const {return const_cast<char*>(std::next(msg.data(), _prefix.size()));}
+	virtual const char* raw_data(msg_ctype& msg) const {return std::next(msg.data(), _prefix.size());}
+	virtual size_t raw_data_len(msg_ctype& msg) const {return msg.size() - _prefix.size() - _suffix.size();}
 
 private:
 	std::string _prefix, _suffix;
 };
 
-} //namespace
+}} //namespace
 
-#endif /* ST_ASIO_WRAPPER_PACKER_H_ */
+#endif /* ST_ASIO_WRAPPER_EXT_PACKER_H_ */

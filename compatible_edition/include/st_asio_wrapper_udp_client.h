@@ -13,24 +13,24 @@
 #ifndef ST_ASIO_WRAPPER_UDP_CLIENT_H_
 #define ST_ASIO_WRAPPER_UDP_CLIENT_H_
 
-#include "st_asio_wrapper_udp_socket.h"
 #include "st_asio_wrapper_client.h"
 
 namespace st_asio_wrapper
 {
 
-typedef st_sclient<st_udp_socket> st_udp_sclient;
-
-template<typename Socket = st_udp_socket, typename Pool = st_object_pool<Socket> >
+template<typename Socket, typename Pool = st_object_pool<Socket> >
 class st_udp_client_base : public st_client<Socket, Pool>
 {
+protected:
+	typedef st_client<Socket, Pool> super;
+
 public:
-	using st_client<Socket, Pool>::TIMER_BEGIN;
-	using st_client<Socket, Pool>::TIMER_END;
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
 
-	st_udp_client_base(st_service_pump& service_pump_) : st_client<Socket, Pool>(service_pump_) {}
+	st_udp_client_base(st_service_pump& service_pump_) : super(service_pump_) {}
 
-	using st_client<Socket, Pool>::add_client;
+	using super::add_client;
 	typename Pool::object_type add_client(unsigned short port, const std::string& ip = std::string())
 	{
 		BOOST_AUTO(client_ptr, ST_THIS create_object());
@@ -41,16 +41,15 @@ public:
 	//functions with a client_ptr parameter will remove the link from object pool first, then call corresponding function
 	void disconnect(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->disconnect();}
 	void disconnect() {ST_THIS do_something_to_all(boost::mem_fn(&Socket::disconnect));}
-	void force_close(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->force_close();}
-	void force_close() {ST_THIS do_something_to_all(boost::mem_fn(&Socket::force_close));}
-	void graceful_close(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->graceful_close();}
-	void graceful_close() {ST_THIS do_something_to_all(boost::mem_fn(&Socket::graceful_close));}
+	void force_shutdown(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->force_shutdown();}
+	void force_shutdown() {ST_THIS do_something_to_all(boost::mem_fn(&Socket::force_shutdown));}
+	void graceful_shutdown(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->graceful_shutdown();}
+	void graceful_shutdown() {ST_THIS do_something_to_all(boost::mem_fn(&Socket::graceful_shutdown));}
 
 protected:
-	virtual void uninit() {ST_THIS stop(); graceful_close();}
+	virtual void uninit() {ST_THIS stop(); graceful_shutdown();}
 };
-typedef st_udp_client_base<> st_udp_client;
 
 } //namespace
 
-#endif /* ST_ASIO_WRAPPER_TEST_CLIENT_H_ */
+#endif /* ST_ASIO_WRAPPER_UDP_CLIENT_H_ */

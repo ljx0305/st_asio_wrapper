@@ -13,7 +13,6 @@
 #ifndef ST_ASIO_WRAPPER_SERVER_H_
 #define ST_ASIO_WRAPPER_SERVER_H_
 
-#include "st_asio_wrapper_server_socket.h"
 #include "st_asio_wrapper_object_pool.h"
 
 #ifndef ST_ASIO_SERVER_PORT
@@ -22,7 +21,7 @@
 static_assert(ST_ASIO_SERVER_PORT > 0, "server port must be bigger than zero.");
 
 #ifndef ST_ASIO_ASYNC_ACCEPT_NUM
-#define ST_ASIO_ASYNC_ACCEPT_NUM	1 //how many async_accept delivery concurrently
+#define ST_ASIO_ASYNC_ACCEPT_NUM	16 //how many async_accept delivery concurrently
 #endif
 static_assert(ST_ASIO_ASYNC_ACCEPT_NUM > 0, "async accept number must be bigger than zero.");
 
@@ -35,7 +34,7 @@ static_assert(ST_ASIO_ASYNC_ACCEPT_NUM > 0, "async accept number must be bigger 
 namespace st_asio_wrapper
 {
 
-template<typename Socket = st_server_socket, typename Pool = st_object_pool<Socket>, typename Server = i_server>
+template<typename Socket, typename Pool = st_object_pool<Socket>, typename Server = i_server>
 class st_server_base : public Server, public Pool
 {
 public:
@@ -70,15 +69,15 @@ public:
 	//implement i_server's pure virtual functions
 	virtual st_service_pump& get_service_pump() {return Pool::get_service_pump();}
 	virtual const st_service_pump& get_service_pump() const {return Pool::get_service_pump();}
-	virtual bool del_client(const boost::shared_ptr<st_timer>& client_ptr)
+	virtual bool del_client(const boost::shared_ptr<st_object>& client_ptr)
 	{
 		auto raw_client_ptr(boost::dynamic_pointer_cast<Socket>(client_ptr));
-		return raw_client_ptr && ST_THIS del_object(raw_client_ptr) ? raw_client_ptr->force_close(), true : false;
+		return raw_client_ptr && ST_THIS del_object(raw_client_ptr) ? raw_client_ptr->force_shutdown(), true : false;
 	}
 
-	//do not use graceful_close() as client does, because in this function, object_can_mutex has been locked, graceful_close will wait until on_recv_error() been invoked,
+	//do not use graceful_shutdown() as client does, because in this function, object_can_mutex has been locked, graceful_shutdown will wait until on_recv_error() been invoked,
 	//but in on_recv_error(), we need to lock object_can_mutex too(in del_object()), this will cause dead lock
-	void close_all_client() {ST_THIS do_something_to_all([](typename Pool::object_ctype& item) {item->force_close();});}
+	void shutdown_all_client() {ST_THIS do_something_to_all([](typename Pool::object_ctype& item) {item->force_shutdown();});}
 
 	///////////////////////////////////////////////////
 	//msg sending interface
@@ -91,8 +90,8 @@ public:
 	///////////////////////////////////////////////////
 
 	void disconnect(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->disconnect();}
-	void force_close(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->force_close();}
-	void graceful_close(typename Pool::object_ctype& client_ptr, bool sync = true) {ST_THIS del_object(client_ptr); client_ptr->graceful_close(sync);}
+	void force_shutdown(typename Pool::object_ctype& client_ptr) {ST_THIS del_object(client_ptr); client_ptr->force_shutdown();}
+	void graceful_shutdown(typename Pool::object_ctype& client_ptr, bool sync = false) {ST_THIS del_object(client_ptr); client_ptr->graceful_shutdown(sync);}
 
 protected:
 	virtual bool init()
@@ -114,13 +113,28 @@ protected:
 
 		return true;
 	}
-	virtual void uninit() {ST_THIS stop(); stop_listen(); close_all_client();}
+	virtual void uninit() {ST_THIS stop(); stop_listen(); shutdown_all_client();}
 	virtual bool on_accept(typename Pool::object_ctype& client_ptr) {return true;}
+
+	//if you want to ignore this error and continue to accept new connections immediately, return true in this virtual function;
+	//if you want to ignore this error and continue to accept new connections after a specific delay, start a timer immediately and return false (don't call stop_listen()),
+	// when the timer ends up, call start_next_accept() in the callback function.
+	//otherwise, don't rewrite this virtual function or call st_server_base::on_accept_error() directly after your code.
+	virtual bool on_accept_error(const boost::system::error_code& ec, typename Pool::object_ctype& client_ptr)
+	{
+		if (boost::asio::error::operation_aborted != ec)
+		{
+			unified_out::error_out("failed to accept new connection because of %s, will stop listening.", ec.message().data());
+			stop_listen();
+		}
+
+		return false;
+	}
 
 	virtual void start_next_accept()
 	{
-		auto client_ptr = ST_THIS create_object(boost::ref(*this));
-		acceptor.async_accept(client_ptr->lowest_layer(), boost::bind(&st_server_base::accept_handler, this, boost::asio::placeholders::error, client_ptr));
+		auto client_ptr = ST_THIS create_object(*this);
+		acceptor.async_accept(client_ptr->lowest_layer(), [=](const boost::system::error_code& ec) {ST_THIS accept_handler(ec, client_ptr);});
 	}
 
 protected:
@@ -133,7 +147,7 @@ protected:
 		}
 
 		client_ptr->show_info("client:", "been refused because of too many clients.");
-		client_ptr->force_close();
+		client_ptr->force_shutdown();
 		return false;
 	}
 
@@ -146,15 +160,14 @@ protected:
 
 			start_next_accept();
 		}
-		else
-			stop_listen();
+		else if (on_accept_error(ec, client_ptr))
+			start_next_accept();
 	}
 
 protected:
 	boost::asio::ip::tcp::endpoint server_addr;
 	boost::asio::ip::tcp::acceptor acceptor;
 };
-typedef st_server_base<> st_server;
 
 } //namespace
 

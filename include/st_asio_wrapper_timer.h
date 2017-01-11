@@ -13,7 +13,11 @@
 #ifndef ST_ASIO_WRAPPER_TIMER_H_
 #define ST_ASIO_WRAPPER_TIMER_H_
 
-#include <boost/container/set.hpp>
+#ifdef ST_ASIO_USE_STEADY_TIMER
+#include <boost/asio/steady_timer.hpp>
+#elif defined(ST_ASIO_USE_SYSTEM_TIMER)
+#include <boost/asio/system_timer.hpp>
+#endif
 
 #include "st_asio_wrapper_object.h"
 
@@ -22,135 +26,128 @@ namespace st_asio_wrapper
 {
 
 //timers are identified by id.
-//for the same timer in the same st_timer, set_timer and stop_timer are not thread safe, please pay special attention.
+//for the same timer in the same st_timer, any manipulations are not thread safe, please pay special attention.
 //to resolve this defect, we must add a mutex member variable to timer_info, it's not worth
 //
 //suppose you have more than one service thread(see st_service_pump for service thread number control), then:
-//same st_timer, same timer, on_timer is called sequentially
-//same st_timer, different timer, on_timer is called concurrently
-//different st_timer, on_timer is always called concurrently
+//for same st_timer: same timer, on_timer is called sequentially
+//for same st_timer: distinct timer, on_timer is called concurrently
+//for distinct st_timer: on_timer is always called concurrently
 class st_timer : public st_object
 {
-protected:
+public:
+#if defined(ST_ASIO_USE_STEADY_TIMER) || defined(ST_ASIO_USE_SYSTEM_TIMER)
+	#ifdef BOOST_ASIO_HAS_STD_CHRONO
+	typedef std::chrono::milliseconds milliseconds;
+	#else
+	typedef boost::chrono::milliseconds milliseconds;
+	#endif
+
+	#ifdef ST_ASIO_USE_STEADY_TIMER
+	typedef boost::asio::steady_timer timer_type;
+	#else
+	typedef boost::asio::system_timer timer_type;
+	#endif
+#else
+	typedef boost::posix_time::milliseconds milliseconds;
+	typedef boost::asio::deadline_timer timer_type;
+#endif
+
+	typedef unsigned char tid;
+	static const tid TIMER_END = 0; //user timer's id must begin from parent class' TIMER_END
+
 	struct timer_info
 	{
-		enum timer_status {TIMER_OK, TIMER_CANCELED};
+		enum timer_status {TIMER_FAKE, TIMER_OK, TIMER_CANCELED};
 
-		unsigned char id;
+		tid id;
 		timer_status status;
-		size_t milliseconds;
-		std::function<bool(unsigned char)> call_back;
-		boost::shared_ptr<boost::asio::deadline_timer> timer;
+		size_t interval_ms;
+		std::function<bool(tid)> call_back;
+		boost::shared_ptr<timer_type> timer;
 
-		bool operator <(const timer_info& other) const {return id < other.id;}
+		timer_info() : id(0), status(TIMER_FAKE), interval_ms(0) {}
 	};
 
-	static const unsigned char TIMER_END = 0; //user timer's id must begin from parent class' TIMER_END
+	typedef const timer_info timer_cinfo;
+	typedef std::vector<timer_info> container_type;
 
-	st_timer(boost::asio::io_service& _io_service_) : st_object(_io_service_) {}
-	virtual ~st_timer() {}
+	st_timer(boost::asio::io_service& _io_service_) : st_object(_io_service_), timer_can(256) {tid id = -1; do_something_to_all([&id](timer_info& item) {item.id = ++id;});}
 
-public:
-	typedef timer_info object_type;
-	typedef const object_type object_ctype;
-	typedef boost::container::set<object_type> container_type;
-
-	void update_timer_info(unsigned char id, size_t milliseconds, std::function<bool(unsigned char)>&& call_back, bool start = false)
+	void update_timer_info(tid id, size_t interval, std::function<bool(tid)>&& call_back, bool start = false)
 	{
-		object_type ti = {id};
+		timer_info& ti = timer_can[id];
 
-		//lock timer_can
-		timer_can_mutex.lock_upgrade();
-		auto iter = timer_can.find(ti);
-		if (iter == std::end(timer_can))
-		{
-			timer_can_mutex.unlock_upgrade_and_lock();
-			iter = timer_can.insert(ti).first;
-			timer_can_mutex.unlock();
-
-			iter->timer = boost::make_shared<boost::asio::deadline_timer>(io_service_);
-		}
-		else
-			timer_can_mutex.unlock_upgrade();
-
-		//items in timer_can not locked
-		iter->status = object_type::TIMER_OK;
-		iter->milliseconds = milliseconds;
-		iter->call_back.swap(call_back);
+		if (timer_info::TIMER_FAKE == ti.status)
+			ti.timer = boost::make_shared<timer_type>(io_service_);
+		ti.status = timer_info::TIMER_OK;
+		ti.interval_ms = interval;
+		ti.call_back.swap(call_back);
 
 		if (start)
-			start_timer(*iter);
+			start_timer(ti);
 	}
-	void update_timer_info(unsigned char id, size_t milliseconds, const std::function<bool(unsigned char)>& call_back, bool start = false)
-		{update_timer_info(id, milliseconds, std::function<bool(unsigned char)>(call_back), start);}
+	void update_timer_info(tid id, size_t interval, const std::function<bool(tid)>& call_back, bool start = false)
+		{update_timer_info(id, interval, std::function<bool(tid)>(call_back), start);}
 
-	void set_timer(unsigned char id, size_t milliseconds, std::function<bool(unsigned char)>&& call_back) {update_timer_info(id, milliseconds, std::move(call_back), true);}
-	void set_timer(unsigned char id, size_t milliseconds, const std::function<bool(unsigned char)>& call_back) {update_timer_info(id, milliseconds, call_back, true);}
+	void change_timer_interval(tid id, size_t interval) {timer_can[id].interval_ms = interval;}
 
-	object_type find_timer(unsigned char id)
+	bool revive_timer(tid id)
 	{
-		object_type ti = {id, object_type::TIMER_CANCELED, 0};
-
-		boost::shared_lock<boost::shared_mutex> lock(timer_can_mutex);
-		auto iter = timer_can.find(ti);
-		if (iter == std::end(timer_can))
-			return *iter;
-		else
-			return ti;
-	}
-
-	bool start_timer(unsigned char id)
-	{
-		object_type ti = {id};
-
-		boost::shared_lock<boost::shared_mutex> lock(timer_can_mutex);
-		auto iter = timer_can.find(ti);
-		if (iter == std::end(timer_can))
+		if (timer_info::TIMER_FAKE == timer_can[id].status)
 			return false;
-		lock.unlock();
 
-		start_timer(*iter);
+		timer_can[id].status = timer_info::TIMER_OK;
 		return true;
 	}
 
-	void stop_timer(unsigned char id)
-	{
-		object_type ti = {id};
+	void set_timer(tid id, size_t interval, std::function<bool(tid)>&& call_back) {update_timer_info(id, interval, std::move(call_back), true);}
+	void set_timer(tid id, size_t interval, const std::function<bool(tid)>& call_back) {update_timer_info(id, interval, call_back, true);}
 
-		boost::shared_lock<boost::shared_mutex> lock(timer_can_mutex);
-		auto iter = timer_can.find(ti);
-		if (iter != std::end(timer_can))
-		{
-			lock.unlock();
-			stop_timer(*iter);
-		}
+	bool start_timer(tid id)
+	{
+		timer_info& ti = timer_can[id];
+
+		if (timer_info::TIMER_FAKE == ti.status)
+			return false;
+
+		ti.status = timer_info::TIMER_OK;
+		start_timer(ti); //if timer already started, this will cancel it first
+
+		return true;
 	}
 
-	DO_SOMETHING_TO_ALL_MUTEX(timer_can, timer_can_mutex)
-	DO_SOMETHING_TO_ONE_MUTEX(timer_can, timer_can_mutex)
+	timer_info find_timer(tid id) const {return timer_can[id];}
+	void stop_timer(tid id) {stop_timer(timer_can[id]);}
+	void stop_all_timer() {do_something_to_all([this](timer_info& item) {ST_THIS stop_timer(item);});}
 
-	void stop_all_timer() {do_something_to_all([this](object_type& item) {ST_THIS stop_timer(item);});}
+	DO_SOMETHING_TO_ALL(timer_can)
+	DO_SOMETHING_TO_ONE(timer_can)
 
 protected:
 	void reset() {st_object::reset();}
 
-	void start_timer(object_ctype& ti)
+	void start_timer(timer_cinfo& ti)
 	{
-		ti.timer->expires_from_now(boost::posix_time::milliseconds(ti.milliseconds));
+		assert(timer_info::TIMER_OK == ti.status);
+
+		ti.timer->expires_from_now(milliseconds(ti.interval_ms));
 		//return true from call_back to continue the timer, or the timer will stop
-		ti.timer->async_wait(
-			make_handler_error([this, &ti](const boost::system::error_code& ec) {if (!ec && ti.call_back(ti.id) && st_timer::object_type::TIMER_OK == ti.status) ST_THIS start_timer(ti);}));
+		ti.timer->async_wait(make_handler_error(
+			[this, &ti](const boost::system::error_code& ec) {if (!ec && ti.call_back(ti.id) && st_timer::timer_info::TIMER_OK == ti.status) ST_THIS start_timer(ti);}));
 	}
 
-	void stop_timer(object_type& ti)
+	void stop_timer(timer_info& ti)
 	{
-		boost::system::error_code ec;
-		ti.timer->cancel(ec);
-		ti.status = object_type::TIMER_CANCELED;
+		if (timer_info::TIMER_OK == ti.status) //enable stopping timers that has been stopped
+		{
+			boost::system::error_code ec;
+			ti.timer->cancel(ec);
+			ti.status = timer_info::TIMER_CANCELED;
+		}
 	}
 
 	container_type timer_can;
-	boost::shared_mutex timer_can_mutex;
 
 private:
 	using st_object::io_service_;
@@ -158,5 +155,5 @@ private:
 
 } //namespace
 
-#endif /* ifndef ST_ASIO_WRAPPER_TIMER_H_ */
+#endif /* ST_ASIO_WRAPPER_TIMER_H_ */
 

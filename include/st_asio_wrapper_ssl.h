@@ -1,5 +1,5 @@
 /*
- * st_asio_wrapper_ssl_object.h
+ * st_asio_wrapper_ssl.h
  *
  *  Created on: 2012-3-2
  *      Author: youngwolf
@@ -16,8 +16,11 @@
 #include <boost/asio/ssl.hpp>
 
 #include "st_asio_wrapper_object_pool.h"
+#include "st_asio_wrapper_connector.h"
 #include "st_asio_wrapper_tcp_client.h"
+#include "st_asio_wrapper_server_socket.h"
 #include "st_asio_wrapper_server.h"
+#include "st_asio_wrapper_container.h"
 
 #ifdef ST_ASIO_REUSE_OBJECT
 	#error boost::asio::ssl::stream not support reuse!
@@ -26,35 +29,40 @@
 namespace st_asio_wrapper
 {
 
-template <typename Packer = ST_ASIO_DEFAULT_PACKER, typename Unpacker = ST_ASIO_DEFAULT_UNPACKER, typename Socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>
-class st_ssl_connector_base : public st_connector_base<Packer, Unpacker, Socket>
+template <typename Packer, typename Unpacker, typename Socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>,
+	template<typename, typename> class InQueue = ST_ASIO_INPUT_QUEUE, template<typename> class InContainer = ST_ASIO_INPUT_CONTAINER,
+	template<typename, typename> class OutQueue = ST_ASIO_OUTPUT_QUEUE, template<typename> class OutContainer = ST_ASIO_OUTPUT_CONTAINER>
+class st_ssl_connector_base : public st_connector_base<Packer, Unpacker, Socket, InQueue, InContainer, OutQueue, OutContainer>
 {
+protected:
+	typedef st_connector_base<Packer, Unpacker, Socket, InQueue, InContainer, OutQueue, OutContainer> super;
+
 public:
-	using st_connector_base<Packer, Unpacker, Socket>::TIMER_BEGIN;
-	using st_connector_base<Packer, Unpacker, Socket>::TIMER_END;
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
 
-	st_ssl_connector_base(boost::asio::io_service& io_service_, boost::asio::ssl::context& ctx) : st_connector_base<Packer, Unpacker, Socket>(io_service_, ctx), authorized_(false) {}
+	st_ssl_connector_base(boost::asio::io_service& io_service_, boost::asio::ssl::context& ctx) : super(io_service_, ctx), authorized_(false) {}
 
-	virtual void reset() {authorized_ = false; st_connector_base<Packer, Unpacker, Socket>::reset();}
+	virtual void reset() {authorized_ = false; super::reset();}
 	bool authorized() const {return authorized_;}
 
-	void disconnect(bool reconnect = false) {force_close(reconnect);}
-	void force_close(bool reconnect = false)
+	void disconnect(bool reconnect = false) {force_shutdown(reconnect);}
+	void force_shutdown(bool reconnect = false)
 	{
 		if (reconnect)
 			unified_out::error_out("boost::asio::ssl::stream not support reuse!");
 
 		if (!shutdown_ssl())
-			st_connector_base<Packer, Unpacker, Socket>::force_close(false);
+			super::force_shutdown(false);
 	}
 
-	void graceful_close(bool reconnect = false, bool sync = true)
+	void graceful_shutdown(bool reconnect = false, bool sync = true)
 	{
 		if (reconnect)
 			unified_out::error_out("boost::asio::ssl::stream not support reuse!");
 
 		if (!shutdown_ssl())
-			st_connector_base<Packer, Unpacker, Socket>::graceful_close(false, sync);
+			super::graceful_shutdown(false, sync);
 	}
 
 protected:
@@ -63,10 +71,10 @@ protected:
 		if (!ST_THIS stopped())
 		{
 			if (ST_THIS reconnecting && !ST_THIS is_connected())
-				ST_THIS lowest_layer().async_connect(ST_THIS server_addr, ST_THIS make_handler_error(boost::bind(&st_ssl_connector_base::connect_handler, this, boost::asio::placeholders::error)));
+				ST_THIS lowest_layer().async_connect(ST_THIS server_addr, ST_THIS make_handler_error([this](const boost::system::error_code& ec) {ST_THIS connect_handler(ec);}));
 			else if (!authorized_)
-				ST_THIS next_layer().async_handshake(boost::asio::ssl::stream_base::client, ST_THIS make_handler_error(boost::bind(&st_ssl_connector_base::handshake_handler, this,
-					boost::asio::placeholders::error)));
+				ST_THIS next_layer().async_handshake(boost::asio::ssl::stream_base::client,
+					ST_THIS make_handler_error([this](const boost::system::error_code& ec) {ST_THIS handshake_handler(ec);}));
 			else
 				ST_THIS do_recv_msg();
 
@@ -76,8 +84,8 @@ protected:
 		return false;
 	}
 
-	virtual void on_unpack_error() {authorized_ = false; st_connector_base<Packer, Unpacker, Socket>::on_unpack_error();}
-	virtual void on_recv_error(const boost::system::error_code& ec) {authorized_ = false; st_connector_base<Packer, Unpacker, Socket>::on_recv_error(ec);}
+	virtual void on_unpack_error() {authorized_ = false; super::on_unpack_error();}
+	virtual void on_recv_error(const boost::system::error_code& ec) {authorized_ = false; super::on_recv_error(ec);}
 	virtual void on_handshake(const boost::system::error_code& ec)
 	{
 		if (!ec)
@@ -85,15 +93,15 @@ protected:
 		else
 			unified_out::error_out("handshake failed: %s", ec.message().data());
 	}
-	virtual bool is_send_allowed() const {return authorized() && st_connector_base<Packer, Unpacker, Socket>::is_send_allowed();}
+	virtual bool is_send_allowed() {return authorized() && super::is_send_allowed();}
 
 	bool shutdown_ssl()
 	{
 		bool re = false;
-		if (!ST_THIS is_closing() && authorized_)
+		if (!ST_THIS is_shutting_down() && authorized_)
 		{
-			ST_THIS show_info("ssl client link:", "been shutting down.");
-			ST_THIS close_state = 2;
+			ST_THIS show_info("ssl client link:", "been shut down.");
+			ST_THIS shutdown_state = super::GRACEFUL;
 			ST_THIS reconnecting = false;
 			authorized_ = false;
 
@@ -130,47 +138,65 @@ private:
 			do_start();
 		}
 		else
-			force_close(false);
+			force_shutdown(false);
 	}
 
 protected:
 	bool authorized_;
 };
-typedef st_ssl_connector_base<> st_ssl_connector;
-typedef st_sclient<st_ssl_connector> st_ssl_tcp_sclient;
 
 template<typename Object>
 class st_ssl_object_pool : public st_object_pool<Object>
 {
-public:
-	using st_object_pool<Object>::TIMER_BEGIN;
-	using st_object_pool<Object>::TIMER_END;
+protected:
+	typedef st_object_pool<Object> super;
 
-	st_ssl_object_pool(st_service_pump& service_pump_, boost::asio::ssl::context::method m) : st_object_pool<Object>(service_pump_), ctx(m) {}
+public:
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
+
+	st_ssl_object_pool(st_service_pump& service_pump_, boost::asio::ssl::context::method m) : super(service_pump_), ctx(m) {}
 	boost::asio::ssl::context& ssl_context() {return ctx;}
 
-	using st_object_pool<Object>::create_object;
-	typename st_ssl_object_pool::object_type create_object() {return create_object(ST_THIS service_pump, ctx);}
+	using super::create_object;
+	typename st_ssl_object_pool::object_type create_object() {return create_object(ST_THIS sp, ctx);}
 	template<typename Arg>
 	typename st_ssl_object_pool::object_type create_object(Arg& arg) {return create_object(arg, ctx);}
 
 protected:
 	boost::asio::ssl::context ctx;
 };
-typedef st_tcp_client_base<st_ssl_connector, st_ssl_object_pool<st_ssl_connector>> st_ssl_tcp_client;
 
-template<typename Packer = ST_ASIO_DEFAULT_PACKER, typename Unpacker = ST_ASIO_DEFAULT_UNPACKER, typename Server = i_server, typename Socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>>
-using st_ssl_server_socket_base = st_server_socket_base<Packer, Unpacker, Server, Socket>;
-typedef st_ssl_server_socket_base<> st_ssl_server_socket;
+template<typename Packer, typename Unpacker, typename Server = i_server, typename Socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>,
+	template<typename, typename> class InQueue = ST_ASIO_INPUT_QUEUE, template<typename> class InContainer = ST_ASIO_INPUT_CONTAINER,
+	template<typename, typename> class OutQueue = ST_ASIO_OUTPUT_QUEUE, template<typename> class OutContainer = ST_ASIO_OUTPUT_CONTAINER>
+#if !defined(_MSC_VER) || _MSC_VER >= 1800
+using st_ssl_server_socket_base = st_server_socket_base<Packer, Unpacker, Server, Socket, InQueue, InContainer, OutQueue, OutContainer>;
+#else
+class st_ssl_server_socket_base : public st_server_socket_base<Packer, Unpacker, Server, Socket, InQueue, InContainer, OutQueue, OutContainer>
+{
+protected:
+	typedef st_server_socket_base<Packer, Unpacker, Server, Socket, InQueue, InContainer, OutQueue, OutContainer> super;
 
-template<typename Socket = st_ssl_server_socket, typename Pool = st_ssl_object_pool<Socket>, typename Server = i_server>
+public:
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
+
+	st_ssl_server_socket_base(Server& server_, boost::asio::ssl::context& ctx) : super(server_, ctx) {}
+};
+#endif
+
+template<typename Socket, typename Pool = st_ssl_object_pool<Socket>, typename Server = i_server>
 class st_ssl_server_base : public st_server_base<Socket, Pool, Server>
 {
-public:
-	using st_server_base<Socket, Pool, Server>::TIMER_BEGIN;
-	using st_server_base<Socket, Pool, Server>::TIMER_END;
+protected:
+	typedef st_server_base<Socket, Pool, Server> super;
 
-	st_ssl_server_base(st_service_pump& service_pump_, boost::asio::ssl::context::method m) : st_server_base<Socket, Pool, Server>(service_pump_, m) {}
+public:
+	using super::TIMER_BEGIN;
+	using super::TIMER_END;
+
+	st_ssl_server_base(st_service_pump& service_pump_, boost::asio::ssl::context::method m) : super(service_pump_, m) {}
 
 protected:
 	virtual void on_handshake(const boost::system::error_code& ec, typename st_ssl_server_base::object_ctype& client_ptr)
@@ -187,8 +213,8 @@ protected:
 
 	virtual void start_next_accept()
 	{
-		auto client_ptr = ST_THIS create_object(boost::ref(*this));
-		ST_THIS acceptor.async_accept(client_ptr->lowest_layer(), boost::bind(&st_ssl_server_base::accept_handler, this, boost::asio::placeholders::error, client_ptr));
+		auto client_ptr = ST_THIS create_object(*this);
+		ST_THIS acceptor.async_accept(client_ptr->lowest_layer(), [client_ptr, this](const boost::system::error_code& ec) {ST_THIS accept_handler(ec, client_ptr);});
 	}
 
 private:
@@ -198,7 +224,7 @@ private:
 		{
 			if (ST_THIS on_accept(client_ptr))
 				client_ptr->next_layer().async_handshake(boost::asio::ssl::stream_base::server,
-					boost::bind(&st_ssl_server_base::handshake_handler, this, boost::asio::placeholders::error, client_ptr));
+					[client_ptr, this](const boost::system::error_code& ec) {ST_THIS handshake_handler(ec, client_ptr);});
 
 			start_next_accept();
 		}
@@ -213,7 +239,6 @@ private:
 			client_ptr->start();
 	}
 };
-typedef st_ssl_server_base<> st_ssl_server;
 
 } //namespace
 

@@ -11,9 +11,6 @@
 //#define ST_ASIO_CLEAR_OBJECT_INTERVAL 1
 //#define ST_ASIO_WANT_MSG_SEND_NOTIFY
 #define ST_ASIO_FULL_STATISTIC //full statistic will slightly impact efficiency
-#ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
-#define ST_ASIO_INPUT_QUEUE non_lock_queue //we will never operate sending buffer concurrently, so need no locks.
-#endif
 //#define ST_ASIO_MAX_MSG_NUM		16
 //if there's a huge number of links, please reduce messge buffer via ST_ASIO_MAX_MSG_NUM macro.
 //please think about if we have 512 links, how much memory we can accupy at most with default ST_ASIO_MAX_MSG_NUM?
@@ -30,11 +27,19 @@
 #define ST_ASIO_DEFAULT_PACKER replaceable_packer<>
 #define ST_ASIO_DEFAULT_UNPACKER replaceable_unpacker<>
 #elif 2 == PACKER_UNPACKER_TYPE
+#undef ST_ASIO_HEARTBEAT_INTERVAL
+#define ST_ASIO_HEARTBEAT_INTERVAL	0 //not support heartbeat
 #define ST_ASIO_DEFAULT_PACKER fixed_length_packer
 #define ST_ASIO_DEFAULT_UNPACKER fixed_length_unpacker
 #elif 3 == PACKER_UNPACKER_TYPE
+#undef ST_ASIO_HEARTBEAT_INTERVAL
+#define ST_ASIO_HEARTBEAT_INTERVAL	0 //not support heartbeat
 #define ST_ASIO_DEFAULT_PACKER prefix_suffix_packer
 #define ST_ASIO_DEFAULT_UNPACKER prefix_suffix_unpacker
+#endif
+
+#if defined(ST_ASIO_WANT_MSG_SEND_NOTIFY) && (!defined(ST_ASIO_HEARTBEAT_INTERVAL) || ST_ASIO_HEARTBEAT_INTERVAL <= 0)
+#define ST_ASIO_INPUT_QUEUE non_lock_queue //we will never operate sending buffer concurrently, so need no locks.
 #endif
 //configuration
 
@@ -50,8 +55,6 @@ using namespace st_asio_wrapper::ext;
 #define RESTART_COMMAND	"restart"
 #define LIST_ALL_CLIENT	"list_all_client"
 #define LIST_STATUS		"status"
-#define SUSPEND_COMMAND	"suspend"
-#define RESUME_COMMAND	"resume"
 
 static bool check_msg;
 
@@ -89,10 +92,10 @@ public:
 	test_socket(boost::asio::io_service& io_service_) : st_connector(io_service_), recv_bytes(0), recv_index(0)
 	{
 #if 2 == PACKER_UNPACKER_TYPE
-		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_UNPACKER>(inner_unpacker())->fixed_length(1024);
+		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_UNPACKER>(unpacker())->fixed_length(1024);
 #elif 3 == PACKER_UNPACKER_TYPE
-		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_PACKER>(inner_packer())->prefix_suffix("begin", "end");
-		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_UNPACKER>(inner_unpacker())->prefix_suffix("begin", "end");
+		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_PACKER>(packer())->prefix_suffix("begin", "end");
+		boost::dynamic_pointer_cast<ST_ASIO_DEFAULT_UNPACKER>(unpacker())->prefix_suffix("begin", "end");
 #endif
 	}
 
@@ -119,7 +122,7 @@ protected:
 	//this virtual function doesn't exists if ST_ASIO_FORCE_TO_USE_MSG_RECV_BUFFER been defined
 	virtual bool on_msg(out_msg_type& msg) {handle_msg(msg); return true;}
 #endif
-	virtual bool on_msg_handle(out_msg_type& msg, bool link_down) {handle_msg(msg); return true;}
+	virtual bool on_msg_handle(out_msg_type& msg) {handle_msg(msg); return true;}
 	//msg handling end
 
 #ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
@@ -129,8 +132,8 @@ protected:
 		if (0 == --msg_num)
 			return;
 
-		auto pstr = inner_packer()->raw_data(msg);
-		auto msg_len = inner_packer()->raw_data_len(msg);
+		auto pstr = packer()->raw_data(msg);
+		auto msg_len = packer()->raw_data_len(msg);
 
 		size_t send_index;
 		memcpy(&send_index, pstr, sizeof(size_t));
@@ -200,7 +203,7 @@ public:
 		case 2: do_something_to_one([&n](object_ctype& item) {return n-- > 0 ? item->force_shutdown(), false : true;});					break;
 #else
 			//method #2
-			//this is a equivalence of calling i_server::del_client in st_server_socket_base::on_recv_error(see st_server_socket_base for more details).
+			//this is a equivalence of calling i_server::del_socket in st_server_socket_base::on_recv_error(see st_server_socket_base for more details).
 		case 0: while (n-- > 0) graceful_shutdown(at(0));			break;
 		case 1: while (n-- > 0) graceful_shutdown(at(0), false);	break;
 		case 2: while (n-- > 0) force_shutdown(at(0));				break;
@@ -240,12 +243,11 @@ void send_msg_one_by_one(test_client& client, size_t msg_num, size_t msg_len, ch
 			printf("\r%u%%", percent);
 			fflush(stdout);
 		}
-	} while (100 != percent);
+	} while (percent < 100);
 	begin_time.stop();
 
 	auto used_time = (double) begin_time.elapsed().wall / 1000000000;
-	printf("\r100%%\ntime spent statistics: %f seconds.\n", used_time);
-	printf("speed: %.0f(*2)kB/s.\n", total_msg_bytes / used_time / 1024);
+	printf(" finished in %f seconds, speed: %f(*2) MBps.\n", used_time, total_msg_bytes / used_time / 1024 / 1024);
 }
 
 void send_msg_randomly(test_client& client, size_t msg_num, size_t msg_len, char msg_fill)
@@ -275,15 +277,14 @@ void send_msg_randomly(test_client& client, size_t msg_num, size_t msg_len, char
 		}
 	}
 
-	while(client.get_recv_bytes() != total_msg_bytes)
+	while(client.get_recv_bytes() < total_msg_bytes)
 		boost::this_thread::sleep(boost::get_system_time() + boost::posix_time::milliseconds(50));
 
 	begin_time.stop();
 	delete[] buff;
 
 	auto used_time = (double) begin_time.elapsed().wall / 1000000000;
-	printf("\r100%%\ntime spent statistics: %f seconds.\n", used_time);
-	printf("speed: %.0f(*2)kB/s.\n", total_msg_bytes / used_time / 1024);
+	printf(" finished in %f seconds, speed: %f(*2) MBps.\n", used_time, total_msg_bytes / used_time / 1024 / 1024);
 }
 
 //use up to a specific worker threads to send messages concurrently
@@ -321,21 +322,15 @@ void send_msg_concurrently(test_client& client, size_t send_thread_num, size_t m
 	boost::timer::cpu_timer begin_time;
 	boost::thread_group threads;
 	do_something_to_all(link_groups, [&threads, msg_num, msg_len, msg_fill](const std::list<test_client::object_type>& item) {
-		auto msg_num_ = msg_num;
-		auto msg_len_ = msg_len;
-		auto msg_fill_ = msg_fill;
-		//terrible Visual C++ 10.0, it cannot capture msg_num, msg_len and msg_fill directly at here
-		threads.create_thread([&item, msg_num_, msg_len_, msg_fill_]() {
-			auto buff = new char[msg_len_];
-			memset(buff, msg_fill_, msg_len_);
-			for (size_t i = 0; i < msg_num_; ++i)
+		threads.create_thread([&item, msg_num, msg_len, msg_fill]() {
+			auto buff = new char[msg_len];
+			memset(buff, msg_fill, msg_len);
+			for (size_t i = 0; i < msg_num; ++i)
 			{
 				memcpy(buff, &i, sizeof(size_t)); //seq
-				auto msg_len__ = msg_len_;
-				//terrible Visual C++ 10.0, it cannot capture msg_len_ directly at here
 
 				//congestion control, method #1, the peer needs its own congestion control too.
-				do_something_to_all(item, [buff, msg_len__](test_client::object_ctype& item2) {item2->safe_send_msg(buff, msg_len__);}); //can_overflow is false, it's important
+				do_something_to_all(item, [buff, msg_len](test_client::object_ctype& item2) {item2->safe_send_msg(buff, msg_len);}); //can_overflow is false, it's important
 			}
 			delete[] buff;
 		});
@@ -353,13 +348,38 @@ void send_msg_concurrently(test_client& client, size_t send_thread_num, size_t m
 			printf("\r%u%%", percent);
 			fflush(stdout);
 		}
-	} while (100 != percent);
+	} while (percent < 100);
 	threads.join_all();
 	begin_time.stop();
 
 	auto used_time = (double) begin_time.elapsed().wall / 1000000000;
-	printf("\r100%%\ntime spent statistics: %f seconds.\n", used_time);
-	printf("speed: %.0f(*2)kB/s.\n", total_msg_bytes / used_time / 1024);
+	printf(" finished in %f seconds, speed: %f(*2) MBps.\n", used_time, total_msg_bytes / used_time / 1024 / 1024);
+}
+
+static bool is_testing;
+void start_test(int repeat_times, char mode, test_client& client, size_t send_thread_num, size_t msg_num, size_t msg_len, char msg_fill)
+{
+	for (int i = 0; i < repeat_times; ++i)
+	{
+		printf("this is the %d / %d test...\n", i + 1, repeat_times);
+		client.clear_status();
+#ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
+		if (0 == mode)
+			send_msg_one_by_one(client, msg_num, msg_len, msg_fill);
+		else
+		{
+			puts("if ST_ASIO_WANT_MSG_SEND_NOTIFY defined, only support mode 0!");
+			break;
+		}
+#else
+		if (0 == mode)
+			send_msg_concurrently(client, send_thread_num, msg_num, msg_len, msg_fill);
+		else
+			send_msg_randomly(client, msg_num, msg_len, msg_fill);
+#endif
+	}
+
+	is_testing = false;
 }
 
 int main(int argc, const char* argv[])
@@ -389,20 +409,20 @@ int main(int argc, const char* argv[])
 	unsigned short port = argc > 3 ? atoi(argv[3]) : ST_ASIO_SERVER_PORT;
 
 	//method #1, create and add clients manually.
-	auto client_ptr = client.create_object();
-	//client_ptr->set_server_addr(port, ip); //we don't have to set server address at here, the following do_something_to_all will do it for us
+	auto socket_ptr = client.create_object();
+	//socket_ptr->set_server_addr(port, ip); //we don't have to set server address at here, the following do_something_to_all will do it for us
 	//some other initializations according to your business
-	client.add_client(client_ptr, false);
-	client_ptr.reset(); //important, otherwise, st_object_pool will not be able to free or reuse this object.
+	client.add_socket(socket_ptr, false);
+	socket_ptr.reset(); //important, otherwise, st_object_pool will not be able to free or reuse this object.
 
 	//method #2, add clients first without any arguments, then set the server address.
 	for (size_t i = 1; i < link_num / 2; ++i)
-		client.add_client();
+		client.add_socket();
 	client.do_something_to_all([port, &ip](test_client::object_ctype& item) {item->set_server_addr(port, ip);});
 
 	//method #3, add clients and set server address in one invocation.
 	for (auto i = std::max((size_t) 1, link_num / 2); i < link_num; ++i)
-		client.add_client(port, ip);
+		client.add_socket(port, ip);
 
 	size_t send_thread_num = 8;
 	if (argc > 2)
@@ -411,40 +431,35 @@ int main(int argc, const char* argv[])
 	auto thread_num = 1;
 	if (argc > 1)
 		thread_num = std::min(16, std::max(thread_num, atoi(argv[1])));
-#ifdef ST_ASIO_CLEAR_OBJECT_INTERVAL
-	if (1 == thread_num)
-		++thread_num;
 	//add one thread will seriously impact IO throughput when doing performance benchmark, this is because the business logic is very simple (send original messages back,
 	//or just add up total message size), under this scenario, just one service thread without receiving buffer will obtain the best IO throughput.
 	//the server has such behavior too.
-#endif
 
 	sp.start_service(thread_num);
 	while(sp.is_running())
 	{
 		std::string str;
 		std::getline(std::cin, str);
-		if (QUIT_COMMAND == str)
-			sp.stop_service();
-		else if (RESTART_COMMAND == str)
-		{
-			sp.stop_service();
-			sp.start_service(thread_num);
-		}
+		if (str.empty())
+			;
 		else if (LIST_STATUS == str)
 		{
 			printf("link #: " ST_ASIO_SF ", valid links: " ST_ASIO_SF ", invalid links: " ST_ASIO_SF "\n", client.size(), client.valid_size(), client.invalid_object_size());
 			puts("");
 			puts(client.get_statistic().to_string().data());
 		}
-		//the following two commands demonstrate how to suspend msg dispatching, no matter recv buffer been used or not
-		else if (SUSPEND_COMMAND == str)
-			client.do_something_to_all([](test_client::object_ctype& item) {item->suspend_dispatch_msg(true);});
-		else if (RESUME_COMMAND == str)
-			client.do_something_to_all([](test_client::object_ctype& item) {item->suspend_dispatch_msg(false);});
 		else if (LIST_ALL_CLIENT == str)
 			client.list_all_object();
-		else if (!str.empty())
+		else if (is_testing)
+			puts("testing has not finished yet!");
+		else if (QUIT_COMMAND == str)
+			sp.stop_service();
+		else if (RESTART_COMMAND == str)
+		{
+			sp.stop_service();
+			sp.start_service(thread_num);
+		}
+		else
 		{
 			if ('+' == str[0] || '-' == str[0])
 			{
@@ -453,7 +468,7 @@ int main(int argc, const char* argv[])
 					n = 1;
 
 				if ('+' == str[0])
-					for (; n > 0 && client.add_client(port, ip); --n);
+					for (; n > 0 && client.add_socket(port, ip); --n);
 				else
 				{
 					if (n > client.size())
@@ -477,7 +492,7 @@ int main(int argc, const char* argv[])
 			size_t msg_num = 1024;
 			size_t msg_len = 1024; //must greater than or equal to sizeof(size_t)
 			auto msg_fill = '0';
-			char model = 0; //0 broadcast, 1 randomly pick one link per msg
+			char mode = 0; //0 broadcast, 1 randomly pick one link per msg
 			auto repeat_times = 1;
 
 			boost::char_separator<char> sep(" \t");
@@ -496,32 +511,18 @@ int main(int argc, const char* argv[])
 				std::max((size_t) atoi(iter++->data()), sizeof(size_t))); //include seq
 #endif
 			if (iter != std::end(parameters)) msg_fill = *iter++->data();
-			if (iter != std::end(parameters)) model = *iter++->data() - '0';
+			if (iter != std::end(parameters)) mode = *iter++->data() - '0';
 			if (iter != std::end(parameters)) repeat_times = std::max(atoi(iter++->data()), 1);
 
-			if (0 != model && 1 != model)
+			if (0 != mode && 1 != mode)
+				puts("unrecognized mode!");
+			else
 			{
-				puts("unrecognized model!");
-				continue;
-			}
+				printf("test parameters after adjustment: " ST_ASIO_SF " " ST_ASIO_SF " %c %d\n", msg_num, msg_len, msg_fill, mode);
+				puts("performance test begin, this application will have no response during the test!");
 
-			printf("test parameters after adjustment: " ST_ASIO_SF " " ST_ASIO_SF " %c %d\n", msg_num, msg_len, msg_fill, model);
-			puts("performance test begin, this application will have no response during the test!");
-			for (int i = 0; i < repeat_times; ++i)
-			{
-				printf("thie is the %d / %d test.\n", i + 1, repeat_times);
-				client.clear_status();
-#ifdef ST_ASIO_WANT_MSG_SEND_NOTIFY
-				if (0 == model)
-					send_msg_one_by_one(client, msg_num, msg_len, msg_fill);
-				else
-					puts("if ST_ASIO_WANT_MSG_SEND_NOTIFY defined, only support model 0!");
-#else
-				if (0 == model)
-					send_msg_concurrently(client, send_thread_num, msg_num, msg_len, msg_fill);
-				else
-					send_msg_randomly(client, msg_num, msg_len, msg_fill);
-#endif
+				is_testing = true;
+				boost::thread(boost::bind(&start_test, repeat_times, mode, boost::ref(client), send_thread_num, msg_num, msg_len, msg_fill)).detach();
 			}
 		}
 	}

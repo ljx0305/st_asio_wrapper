@@ -3,10 +3,10 @@
 #include <boost/tokenizer.hpp>
 
 //configuration
-#define ST_ASIO_SERVER_PORT		5050
+#define ST_ASIO_SERVER_PORT		5051
 #define ST_ASIO_DELAY_CLOSE		5 //define this to avoid hooks for async call (and slightly improve efficiency)
 //#define ST_ASIO_INPUT_QUEUE non_lock_queue
-//we cannot use non_lock_queue, because we also send messages (talking messages) out of st_asio_wrapper::st_socket::on_msg_send().
+//we cannot use non_lock_queue, because we also send messages (talking messages) out of st_asio_wrapper::socket::on_msg_send().
 #define ST_ASIO_DEFAULT_UNPACKER replaceable_unpacker<>
 #define ST_ASIO_RECV_BUFFER_TYPE std::vector<boost::asio::mutable_buffer> //scatter-gather buffer, it's very useful under certain situations (for example, ring buffer).
 #define ST_ASIO_SCATTERED_RECV_BUFFER //used by unpackers, not belongs to st_asio_wrapper
@@ -18,13 +18,13 @@
 #define RESTART_COMMAND	"restart"
 #define REQUEST_FILE	"get"
 
-#if BOOST_VERSION >= 105300
-boost::atomic_ushort completed_client_num;
-#else
-st_atomic<unsigned short> completed_client_num;
-#endif
 int link_num = 1;
 fl_type file_size;
+#if BOOST_VERSION >= 105300
+boost::atomic_int_fast64_t received_size;
+#else
+atomic<boost::int_fast64_t> received_size;
+#endif
 
 int main(int argc, const char* argv[])
 {
@@ -35,13 +35,13 @@ int main(int argc, const char* argv[])
 	else
 		puts("type " QUIT_COMMAND " to end.");
 
-	st_service_pump sp;
+	service_pump sp;
 	file_client client(sp);
 
 	if (argc > 3)
 		link_num = std::min(256, std::max(atoi(argv[3]), 1));
 
-	for (auto i = 0; i < link_num; ++i)
+	for (int i = 0; i < link_num; ++i)
 	{
 //		argv[2] = "::1" //ipv6
 //		argv[2] = "127.0.0.1" //ipv4
@@ -69,27 +69,16 @@ int main(int argc, const char* argv[])
 		{
 			str.erase(0, sizeof(REQUEST_FILE));
 			boost::char_separator<char> sep(" \t");
-			boost::tokenizer<boost::char_separator<char>> tok(str, sep);
-			do_something_to_all(tok, [&](boost::tokenizer<boost::char_separator<char>>::const_reference item) {
-				completed_client_num = 0;
-				file_size = 0;
+			boost::tokenizer<boost::char_separator<char> > tok(str, sep);
+			for (BOOST_AUTO(iter, tok.begin()); iter != tok.end(); ++iter)
+			{
+				file_size = -1;
+				received_size = 0;
 
-				printf("transfer %s begin.\n", item.data());
-				if (client.find(0)->get_file(item))
-				{
-					//client.do_something_to_all([&item](file_client::object_ctype& item2) {if (0 != item2->id()) item2->get_file(item);});
-					//if you always return false, do_something_to_one will be equal to do_something_to_all.
-					client.do_something_to_one([&item](file_client::object_ctype& item2)->bool {if (0 != item2->id()) item2->get_file(item); return false;});
-					client.start();
-
-					while (completed_client_num != (unsigned short) link_num)
+				if (client.get_file(*iter))
+					while (client.is_transferring())
 						boost::this_thread::sleep(boost::get_system_time() + boost::posix_time::milliseconds(50));
-
-					client.stop(item);
-				}
-				else
-					printf("transfer %s failed!\n", item.data());
-			});
+			}
 		}
 		else
 			client.at(0)->talk(str);
